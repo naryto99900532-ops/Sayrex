@@ -9,17 +9,6 @@ let currentNewsId = null;
 let selectedImages = [];
 
 /**
- * Экранирование HTML для безопасности
- * @param {string} text - Текст для экранирования
- * @returns {string} - Экранированный текст
- */
-function escapeHtml(text) {
-    if (typeof text !== 'string') return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-/**
  * Открытие деталей новости
  * @param {string} newsId - ID новости
  */
@@ -42,7 +31,7 @@ async function openNewsDetails(newsId) {
         // Упрощенная информация об авторе
         const author = { username: 'Автор новости' };
         
-        // Получаем комментарии (даже без авторизации)
+        // Получаем комментарии
         let comments = [];
         try {
             const { data: commentsData, error: commentsError } = await _supabase
@@ -98,11 +87,8 @@ async function openNewsDetails(newsId) {
                                 hour: '2-digit',
                                 minute: '2-digit'
                             });
-                            
-                            // Проверяем авторизацию для кнопок действий
-                            const isCommentAuthor = currentUser && comment.author_id === currentUser.id;
-                            const isAdmin = currentUserRole === 'admin' || currentUserRole === 'owner';
-                            const canDelete = isCommentAuthor || isAdmin;
+                            const isCommentAuthor = comment.author_id === currentUser?.id;
+                            const canDelete = isCommentAuthor || (currentUserRole === 'admin' || currentUserRole === 'owner');
                             
                             return `
                                 <div class="comment-item" id="comment-${comment.id}">
@@ -114,20 +100,18 @@ async function openNewsDetails(newsId) {
                                         <div class="comment-date">${commentDate}</div>
                                     </div>
                                     <div class="comment-content">${escapeHtml(comment.content)}</div>
-                                    ${currentUser ? `
-                                        <div class="comment-actions">
-                                            ${isCommentAuthor ? `
-                                                <button class="comment-btn edit" onclick="editComment('${comment.id}')">
-                                                    <i class="fas fa-edit"></i> Редактировать
-                                                </button>
-                                            ` : ''}
-                                            ${canDelete ? `
-                                                <button class="comment-btn delete" onclick="deleteComment('${comment.id}')">
-                                                    <i class="fas fa-trash"></i> Удалить
-                                                </button>
-                                            ` : ''}
-                                        </div>
-                                    ` : ''}
+                                    <div class="comment-actions">
+                                        ${isCommentAuthor ? `
+                                            <button class="comment-btn edit" onclick="editComment('${comment.id}')">
+                                                <i class="fas fa-edit"></i> Редактировать
+                                            </button>
+                                        ` : ''}
+                                        ${canDelete ? `
+                                            <button class="comment-btn delete" onclick="deleteComment('${comment.id}')">
+                                                <i class="fas fa-trash"></i> Удалить
+                                            </button>
+                                        ` : ''}
+                                    </div>
                                 </div>
                             `;
                         }).join('')}
@@ -163,14 +147,10 @@ async function openNewsDetails(newsId) {
             `;
         }
         
-        // Показываем кнопку удаления для админов (только если авторизован и админ)
+        // Показываем кнопку удаления для админов (только в management.html)
         const deleteBtnContainer = document.querySelector('.news-details-actions');
-        if (deleteBtnContainer) {
-            if (currentUser && (currentUserRole === 'admin' || currentUserRole === 'owner')) {
-                deleteBtnContainer.style.display = 'block';
-            } else {
-                deleteBtnContainer.style.display = 'none';
-            }
+        if (deleteBtnContainer && (currentUserRole === 'admin' || currentUserRole === 'owner')) {
+            deleteBtnContainer.style.display = 'block';
         }
         
         // Показываем модальное окно
@@ -179,7 +159,7 @@ async function openNewsDetails(newsId) {
             newsDetailsModal.style.display = 'flex';
         }
         
-        // Добавляем форму для комментариев только если пользователь авторизован
+        // Добавляем форму для комментариев если пользователь авторизован
         if (currentUser) {
             // Даем время для отрисовки контента
             setTimeout(() => {
@@ -202,10 +182,6 @@ async function openNewsDetails(newsId) {
                 `;
                 
                 if (commentsSection) {
-                    // Удаляем старую форму если есть
-                    const oldForm = commentsSection.querySelector('.add-comment-form');
-                    if (oldForm) oldForm.remove();
-                    
                     commentsSection.insertAdjacentHTML('beforeend', commentFormHTML);
                 } else {
                     // Если нет комментариев, создаем секцию
@@ -217,25 +193,6 @@ async function openNewsDetails(newsId) {
                     `;
                     if (newsDetailsContent) {
                         newsDetailsContent.appendChild(commentsSectionNew);
-                    }
-                }
-            }, 100);
-        } else {
-            // Если пользователь не авторизован, показываем сообщение
-            setTimeout(() => {
-                const commentsSection = document.getElementById('newsDetailsContent')?.querySelector('.news-comments-section');
-                if (!commentsSection) {
-                    // Создаем секцию с сообщением о необходимости входа
-                    const loginMessageHTML = `
-                        <div class="news-comments-section">
-                            <h4><i class="fas fa-comments"></i> Комментарии</h4>
-                            <div class="login-to-comment">
-                                <p><i class="fas fa-sign-in-alt"></i> Чтобы оставить комментарий, пожалуйста, <a href="index.html" onclick="window.location.href='index.html'; return false;">войдите в систему</a></p>
-                            </div>
-                        </div>
-                    `;
-                    if (newsDetailsContent) {
-                        newsDetailsContent.insertAdjacentHTML('beforeend', loginMessageHTML);
                     }
                 }
             }, 100);
@@ -374,6 +331,73 @@ async function loadNews() {
         }
     }
 }
+/**
+ * Отображение списка новостей
+ * @param {Array} news - Массив новостей
+ */
+function renderNewsList(news) {
+    const newsList = document.getElementById('newsList') || document.getElementById('newsListIndex');
+    if (!newsList) return;
+    
+    if (!news || news.length === 0) {
+        newsList.innerHTML = `
+            <div class="threshold-card">
+                <h3><i class="fas fa-newspaper"></i> Новостей пока нет</h3>
+                <p>Будьте первым, кто опубликует новость!</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    
+    news.forEach((newsItem, index) => {
+        const authorName = newsItem.author?.username || 'Автор новости';
+        const newsDate = new Date(newsItem.created_at).toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        // Обрезаем текст для превью
+        const previewText = newsItem.content.length > 150 
+            ? escapeHtml(newsItem.content.substring(0, 150)) + '...' 
+            : escapeHtml(newsItem.content);
+        
+        // Безопасный вызов openNewsDetails - всегда доступен
+        html += `
+            <div class="news-card" onclick="safeOpenNewsDetails('${newsItem.id}')">
+                <div class="news-header">
+                    <h3 class="news-title">${escapeHtml(newsItem.title)}</h3>
+                    <div class="news-meta">
+                        <span class="news-author"><i class="fas fa-user"></i> ${escapeHtml(authorName)}</span>
+                        <span class="news-date"><i class="fas fa-calendar"></i> ${newsDate}</span>
+                    </div>
+                </div>
+                <div class="news-content-preview">
+                    ${previewText}
+                </div>
+                ${newsItem.image_urls && newsItem.image_urls.length > 0 ? `
+                    <div class="news-images-preview">
+                        <i class="fas fa-image"></i> ${newsItem.image_urls.length} изображений
+                    </div>
+                ` : ''}
+                <div class="news-footer">
+                    <span class="news-comments-count">
+                        <i class="fas fa-comment"></i> ${newsItem.comments_count || 0} комментариев
+                    </span>
+                    <button class="news-read-more" onclick="event.stopPropagation(); safeOpenNewsDetails('${newsItem.id}')">
+                        Читать далее <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+    
+    newsList.innerHTML = html;
+}
 
 /**
  * Открытие модального окна создания новости
@@ -424,21 +448,6 @@ function handleImageSelection(event) {
     }
 }
 
-/**
- * Показать уведомление (базовая версия для index.html)
- * @param {string} message - Текст сообщения
- * @param {string} type - Тип сообщения
- */
-function showNotification(message, type = 'info') {
-    // Простой alert для index.html
-    alert(message);
-    
-    // Или создаем уведомление если нужна красивая версия
-    if (typeof window.showNotification === 'function') {
-        // Используем существующую функцию из других файлов
-        window.showNotification(message, type);
-    }
-}
 /**
  * Загрузка изображений в Supabase Storage
  * @param {Array} images - Массив файлов изображений
@@ -915,72 +924,6 @@ async function addComment(e) {
 }
 
 /**
- * Отображение списка новостей
- * @param {Array} news - Массив новостей
- */
-function renderNewsList(news) {
-    const newsList = document.getElementById('newsList') || document.getElementById('newsListIndex');
-    if (!newsList) return;
-    
-    if (!news || news.length === 0) {
-        newsList.innerHTML = `
-            <div class="threshold-card">
-                <h3><i class="fas fa-newspaper"></i> Новостей пока нет</h3>
-                <p>Будьте первым, кто опубликует новость!</p>
-            </div>
-        `;
-        return;
-    }
-    
-    let html = '';
-    
-    news.forEach((newsItem, index) => {
-        const authorName = newsItem.author?.username || 'Автор новости';
-        const newsDate = new Date(newsItem.created_at).toLocaleDateString('ru-RU', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        
-        // Обрезаем текст для превью
-        const previewText = newsItem.content.length > 150 
-            ? escapeHtml(newsItem.content.substring(0, 150)) + '...' 
-            : escapeHtml(newsItem.content);
-        
-        html += `
-            <div class="news-card" onclick="if (typeof openNewsDetails === 'function') openNewsDetails('${newsItem.id}')">
-                <div class="news-header">
-                    <h3 class="news-title">${escapeHtml(newsItem.title)}</h3>
-                    <div class="news-meta">
-                        <span class="news-author"><i class="fas fa-user"></i> ${escapeHtml(authorName)}</span>
-                        <span class="news-date"><i class="fas fa-calendar"></i> ${newsDate}</span>
-                    </div>
-                </div>
-                <div class="news-content-preview">
-                    ${previewText}
-                </div>
-                ${newsItem.image_urls && newsItem.image_urls.length > 0 ? `
-                    <div class="news-images-preview">
-                        <i class="fas fa-image"></i> ${newsItem.image_urls.length} изображений
-                    </div>
-                ` : ''}
-                <div class="news-footer">
-                    <span class="news-comments-count">
-                        <i class="fas fa-comment"></i> ${newsItem.comments_count || 0} комментариев
-                    </span>
-                    <button class="news-read-more" onclick="event.stopPropagation(); if (typeof openNewsDetails === 'function') openNewsDetails('${newsItem.id}')">
-                        Читать далее <i class="fas fa-arrow-right"></i>
-                    </button>
-                </div>
-            </div>
-        `;
-    });
-    
-    newsList.innerHTML = html;
-}
-/**
  * Редактирование комментария
  * @param {string} commentId - ID комментария
  */
@@ -1160,200 +1103,14 @@ async function deleteNews(newsId) {
  * Безопасное открытие деталей новости (работает без авторизации)
  * @param {string} newsId - ID новости
  */
-
-/**
- * Открытие деталей новости
- * @param {string} newsId - ID новости
- */
-async function openNewsDetails(newsId) {
-    try {
-        currentNewsId = newsId;
-        
-        // Получаем данные новости
-        const { data: news, error: newsError } = await _supabase
-            .from('news')
-            .select('*')
-            .eq('id', newsId)
-            .single();
-        
-        if (newsError) {
-            console.error('Ошибка загрузки новости:', newsError);
-            throw newsError;
-        }
-        
-        // Упрощенная информация об авторе
-        const author = { username: 'Автор новости' };
-        
-        // Получаем комментарии
-        let comments = [];
-        try {
-            const { data: commentsData, error: commentsError } = await _supabase
-                .from('news_comments')
-                .select('*')
-                .eq('news_id', newsId)
-                .order('created_at', { ascending: true });
-            
-            if (!commentsError && commentsData) {
-                comments = commentsData;
-            }
-        } catch (commentsError) {
-            console.log('Ошибка загрузки комментариев:', commentsError);
-        }
-        
-        // Форматируем дату
-        const newsDate = new Date(news.created_at).toLocaleDateString('ru-RU', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        
-        // Генерируем HTML для изображений
-        let imagesHTML = '';
-        if (news.image_urls && news.image_urls.length > 0) {
-            imagesHTML = `
-                <div class="news-details-images">
-                    <h4><i class="fas fa-images"></i> Прикрепленные изображения</h4>
-                    <div class="news-images-grid">
-                        ${news.image_urls.map(url => `
-                            <div class="news-image-item">
-                                <img src="${url}" alt="Изображение новости" onclick="openImageModal('${url}')">
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
-        }
-        
-        // Генерируем HTML для комментариев
-        let commentsHTML = '';
-        if (comments && comments.length > 0) {
-            commentsHTML = `
-                <div class="news-comments-section">
-                    <h4><i class="fas fa-comments"></i> Комментарии (${comments.length})</h4>
-                    <div class="comments-list">
-                        ${comments.map(comment => {
-                            const commentDate = new Date(comment.created_at).toLocaleDateString('ru-RU', {
-                                day: 'numeric',
-                                month: 'short',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                            });
-                            const isCommentAuthor = comment.author_id === currentUser?.id;
-                            const canDelete = isCommentAuthor || (currentUserRole === 'admin' || currentUserRole === 'owner');
-                            
-                            return `
-                                <div class="comment-item" id="comment-${comment.id}">
-                                    <div class="comment-header">
-                                        <div class="comment-author">
-                                            <i class="fas fa-user"></i>
-                                            <span>${escapeHtml('Пользователь')}</span>
-                                        </div>
-                                        <div class="comment-date">${commentDate}</div>
-                                    </div>
-                                    <div class="comment-content">${escapeHtml(comment.content)}</div>
-                                    <div class="comment-actions">
-                                        ${isCommentAuthor ? `
-                                            <button class="comment-btn edit" onclick="editComment('${comment.id}')">
-                                                <i class="fas fa-edit"></i> Редактировать
-                                            </button>
-                                        ` : ''}
-                                        ${canDelete ? `
-                                            <button class="comment-btn delete" onclick="deleteComment('${comment.id}')">
-                                                <i class="fas fa-trash"></i> Удалить
-                                            </button>
-                                        ` : ''}
-                                    </div>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                </div>
-            `;
-        }
-        
-        // Заполняем модальное окно
-        const newsDetailsTitle = document.getElementById('newsDetailsTitle');
-        const newsDetailsAuthor = document.getElementById('newsDetailsAuthor');
-        const newsDetailsDate = document.getElementById('newsDetailsDate');
-        const newsDetailsContent = document.getElementById('newsDetailsContent');
-        
-        if (newsDetailsTitle) newsDetailsTitle.textContent = escapeHtml(news.title);
-        if (newsDetailsAuthor) {
-            newsDetailsAuthor.innerHTML = `
-                <i class="fas fa-user"></i> ${escapeHtml(author.username)}
-            `;
-        }
-        if (newsDetailsDate) {
-            newsDetailsDate.innerHTML = `
-                <i class="fas fa-calendar"></i> ${newsDate}
-            `;
-        }
-        if (newsDetailsContent) {
-            newsDetailsContent.innerHTML = `
-                <div class="news-details-text">
-                    ${escapeHtml(news.content).replace(/\n/g, '<br>')}
-                </div>
-                ${imagesHTML}
-                ${commentsHTML}
-            `;
-        }
-        
-        // Показываем кнопку удаления для админов (только в management.html)
-        const deleteBtnContainer = document.querySelector('.news-details-actions');
-        if (deleteBtnContainer && (currentUserRole === 'admin' || currentUserRole === 'owner')) {
-            deleteBtnContainer.style.display = 'block';
-        }
-        
-        // Показываем модальное окно
-        const newsDetailsModal = document.getElementById('newsDetailsModal');
-        if (newsDetailsModal) {
-            newsDetailsModal.style.display = 'flex';
-        }
-        
-        // Добавляем форму для комментариев если пользователь авторизован
-        if (currentUser) {
-            // Даем время для отрисовки контента
-            setTimeout(() => {
-                const commentsSection = document.getElementById('newsDetailsContent')?.querySelector('.news-comments-section');
-                const commentFormHTML = `
-                    <div class="add-comment-form">
-                        <h5><i class="fas fa-comment-medical"></i> Добавить комментарий</h5>
-                        <form id="addCommentForm" onsubmit="event.preventDefault(); if (typeof addComment === 'function') addComment(event);">
-                            <textarea 
-                                id="commentContent" 
-                                placeholder="Напишите ваш комментарий..." 
-                                rows="3" 
-                                required
-                            ></textarea>
-                            <button type="submit" class="btn-yellow">
-                                <i class="fas fa-paper-plane"></i> Отправить
-                            </button>
-                        </form>
-                    </div>
-                `;
-                
-                if (commentsSection) {
-                    commentsSection.insertAdjacentHTML('beforeend', commentFormHTML);
-                } else {
-                    // Если нет комментариев, создаем секцию
-                    const commentsSectionNew = document.createElement('div');
-                    commentsSectionNew.className = 'news-comments-section';
-                    commentsSectionNew.innerHTML = `
-                        <h4><i class="fas fa-comments"></i> Комментарии</h4>
-                        ${commentFormHTML}
-                    `;
-                    if (newsDetailsContent) {
-                        newsDetailsContent.appendChild(commentsSectionNew);
-                    }
-                }
-            }, 100);
-        }
-        
-    } catch (error) {
-        console.error('Ошибка загрузки деталей новости:', error);
-        showNotification('Ошибка загрузки новости. Попробуйте еще раз.', 'error');
+function safeOpenNewsDetails(newsId) {
+    if (typeof openNewsDetails === 'function') {
+        openNewsDetails(newsId);
+    } else {
+        // Альтернатива: показать базовую информацию
+        alert('Для просмотра деталей новости необходимо войти в систему');
+        // Или перенаправить на страницу входа
+        // window.location.href = 'index.html';
     }
 }
 /**
