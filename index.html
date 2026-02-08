@@ -317,5 +317,15 @@ function showNotification(message, type = 'info') {
         // Остальной код для главной страницы...
     });
 </script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Инициализация новостей для главной страницы
+        if (typeof initializeNewsModule === 'function') {
+            initializeNewsModule();
+        }
+        
+        // Остальной код...
+    });
+</script>
 </body>
 </html>
