@@ -426,6 +426,21 @@ function handleImageSelection(event) {
 }
 
 /**
+ * Показать уведомление (базовая версия для index.html)
+ * @param {string} message - Текст сообщения
+ * @param {string} type - Тип сообщения
+ */
+function showNotification(message, type = 'info') {
+    // Простой alert для index.html
+    alert(message);
+    
+    // Или создаем уведомление если нужна красивая версия
+    if (typeof window.showNotification === 'function') {
+        // Используем существующую функцию из других файлов
+        window.showNotification(message, type);
+    }
+}
+/**
  * Загрузка изображений в Supabase Storage
  * @param {Array} images - Массив файлов изображений
  * @returns {Promise<Array>} - Массив URL загруженных изображений
