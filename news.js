@@ -9,6 +9,17 @@ let currentNewsId = null;
 let selectedImages = [];
 
 /**
+ * Экранирование HTML для безопасности
+ * @param {string} text - Текст для экранирования
+ * @returns {string} - Экранированный текст
+ */
+function escapeHtml(text) {
+    if (typeof text !== 'string') return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+/**
  * Открытие деталей новости
  * @param {string} newsId - ID новости
  */
@@ -325,7 +336,7 @@ async function loadNews() {
             </div>
         `;
         
-        // Получаем новости (без связи с профилями в одном запросе)
+        // Получаем новости (без связи с профилями)
         const { data: news, error } = await _supabase
             .from('news')
             .select('*')
@@ -337,58 +348,12 @@ async function loadNews() {
             throw error;
         }
         
-        // Получаем информацию об авторах отдельно
-        const authorIds = [...new Set(news.map(item => item.author_id))];
-        const authorMap = {};
-        
-        for (const authorId of authorIds) {
-            if (authorId) {
-                try {
-                    const { data: profile, error: profileError } = await _supabase
-                        .from('profiles')
-                        .select('username, avatar_url')
-                        .eq('id', authorId)
-                        .single();
-                    
-                    if (!profileError && profile) {
-                        authorMap[authorId] = profile;
-                    } else {
-                        authorMap[authorId] = { username: 'Неизвестный автор' };
-                    }
-                } catch (profileError) {
-                    console.log(`Профиль не найден для пользователя ${authorId}:`, profileError);
-                    authorMap[authorId] = { username: 'Неизвестный автор' };
-                }
-            }
-        }
-        
-        // Получаем количество комментариев для каждой новости
-        const newsWithDetails = [];
-        for (const newsItem of news) {
-            try {
-                // Получаем количество комментариев
-                const { count: commentsCount } = await _supabase
-                    .from('news_comments')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('news_id', newsItem.id);
-                
-                // Получаем автора
-                const author = authorMap[newsItem.author_id] || { username: 'Неизвестный автор' };
-                
-                newsWithDetails.push({
-                    ...newsItem,
-                    author: author,
-                    comments_count: commentsCount || 0
-                });
-            } catch (itemError) {
-                console.log(`Ошибка обработки новости ${newsItem.id}:`, itemError);
-                newsWithDetails.push({
-                    ...newsItem,
-                    author: { username: 'Неизвестный автор' },
-                    comments_count: 0
-                });
-            }
-        }
+        // Упрощенная версия - не пытаемся получить авторов из profiles
+        const newsWithDetails = news ? news.map(newsItem => ({
+            ...newsItem,
+            author: { username: 'Автор новости' }, // Временное решение
+            comments_count: 0
+        })) : [];
         
         newsData = newsWithDetails;
         
@@ -1182,14 +1147,199 @@ async function deleteNews(newsId) {
  * Безопасное открытие деталей новости (работает без авторизации)
  * @param {string} newsId - ID новости
  */
-function safeOpenNewsDetails(newsId) {
-    if (typeof openNewsDetails === 'function') {
-        openNewsDetails(newsId);
-    } else {
-        // Альтернатива: показать базовую информацию
-        alert('Для просмотра деталей новости необходимо войти в систему');
-        // Или перенаправить на страницу входа
-        // window.location.href = 'index.html';
+/**
+ * Открытие деталей новости
+ * @param {string} newsId - ID новости
+ */
+async function openNewsDetails(newsId) {
+    try {
+        currentNewsId = newsId;
+        
+        // Получаем данные новости
+        const { data: news, error: newsError } = await _supabase
+            .from('news')
+            .select('*')
+            .eq('id', newsId)
+            .single();
+        
+        if (newsError) {
+            console.error('Ошибка загрузки новости:', newsError);
+            throw newsError;
+        }
+        
+        // Упрощенная информация об авторе
+        const author = { username: 'Автор новости' };
+        
+        // Получаем комментарии
+        let comments = [];
+        try {
+            const { data: commentsData, error: commentsError } = await _supabase
+                .from('news_comments')
+                .select('*')
+                .eq('news_id', newsId)
+                .order('created_at', { ascending: true });
+            
+            if (!commentsError && commentsData) {
+                comments = commentsData;
+            }
+        } catch (commentsError) {
+            console.log('Ошибка загрузки комментариев:', commentsError);
+        }
+        
+        // Форматируем дату
+        const newsDate = new Date(news.created_at).toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        // Генерируем HTML для изображений
+        let imagesHTML = '';
+        if (news.image_urls && news.image_urls.length > 0) {
+            imagesHTML = `
+                <div class="news-details-images">
+                    <h4><i class="fas fa-images"></i> Прикрепленные изображения</h4>
+                    <div class="news-images-grid">
+                        ${news.image_urls.map(url => `
+                            <div class="news-image-item">
+                                <img src="${url}" alt="Изображение новости" onclick="openImageModal('${url}')">
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Генерируем HTML для комментариев
+        let commentsHTML = '';
+        if (comments && comments.length > 0) {
+            commentsHTML = `
+                <div class="news-comments-section">
+                    <h4><i class="fas fa-comments"></i> Комментарии (${comments.length})</h4>
+                    <div class="comments-list">
+                        ${comments.map(comment => {
+                            const commentDate = new Date(comment.created_at).toLocaleDateString('ru-RU', {
+                                day: 'numeric',
+                                month: 'short',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            });
+                            const isCommentAuthor = comment.author_id === currentUser?.id;
+                            const canDelete = isCommentAuthor || (currentUserRole === 'admin' || currentUserRole === 'owner');
+                            
+                            return `
+                                <div class="comment-item" id="comment-${comment.id}">
+                                    <div class="comment-header">
+                                        <div class="comment-author">
+                                            <i class="fas fa-user"></i>
+                                            <span>${escapeHtml('Пользователь')}</span>
+                                        </div>
+                                        <div class="comment-date">${commentDate}</div>
+                                    </div>
+                                    <div class="comment-content">${escapeHtml(comment.content)}</div>
+                                    <div class="comment-actions">
+                                        ${isCommentAuthor ? `
+                                            <button class="comment-btn edit" onclick="editComment('${comment.id}')">
+                                                <i class="fas fa-edit"></i> Редактировать
+                                            </button>
+                                        ` : ''}
+                                        ${canDelete ? `
+                                            <button class="comment-btn delete" onclick="deleteComment('${comment.id}')">
+                                                <i class="fas fa-trash"></i> Удалить
+                                            </button>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Заполняем модальное окно
+        const newsDetailsTitle = document.getElementById('newsDetailsTitle');
+        const newsDetailsAuthor = document.getElementById('newsDetailsAuthor');
+        const newsDetailsDate = document.getElementById('newsDetailsDate');
+        const newsDetailsContent = document.getElementById('newsDetailsContent');
+        
+        if (newsDetailsTitle) newsDetailsTitle.textContent = escapeHtml(news.title);
+        if (newsDetailsAuthor) {
+            newsDetailsAuthor.innerHTML = `
+                <i class="fas fa-user"></i> ${escapeHtml(author.username)}
+            `;
+        }
+        if (newsDetailsDate) {
+            newsDetailsDate.innerHTML = `
+                <i class="fas fa-calendar"></i> ${newsDate}
+            `;
+        }
+        if (newsDetailsContent) {
+            newsDetailsContent.innerHTML = `
+                <div class="news-details-text">
+                    ${escapeHtml(news.content).replace(/\n/g, '<br>')}
+                </div>
+                ${imagesHTML}
+                ${commentsHTML}
+            `;
+        }
+        
+        // Показываем кнопку удаления для админов (только в management.html)
+        const deleteBtnContainer = document.querySelector('.news-details-actions');
+        if (deleteBtnContainer && (currentUserRole === 'admin' || currentUserRole === 'owner')) {
+            deleteBtnContainer.style.display = 'block';
+        }
+        
+        // Показываем модальное окно
+        const newsDetailsModal = document.getElementById('newsDetailsModal');
+        if (newsDetailsModal) {
+            newsDetailsModal.style.display = 'flex';
+        }
+        
+        // Добавляем форму для комментариев если пользователь авторизован
+        if (currentUser) {
+            // Даем время для отрисовки контента
+            setTimeout(() => {
+                const commentsSection = document.getElementById('newsDetailsContent')?.querySelector('.news-comments-section');
+                const commentFormHTML = `
+                    <div class="add-comment-form">
+                        <h5><i class="fas fa-comment-medical"></i> Добавить комментарий</h5>
+                        <form id="addCommentForm" onsubmit="event.preventDefault(); if (typeof addComment === 'function') addComment(event);">
+                            <textarea 
+                                id="commentContent" 
+                                placeholder="Напишите ваш комментарий..." 
+                                rows="3" 
+                                required
+                            ></textarea>
+                            <button type="submit" class="btn-yellow">
+                                <i class="fas fa-paper-plane"></i> Отправить
+                            </button>
+                        </form>
+                    </div>
+                `;
+                
+                if (commentsSection) {
+                    commentsSection.insertAdjacentHTML('beforeend', commentFormHTML);
+                } else {
+                    // Если нет комментариев, создаем секцию
+                    const commentsSectionNew = document.createElement('div');
+                    commentsSectionNew.className = 'news-comments-section';
+                    commentsSectionNew.innerHTML = `
+                        <h4><i class="fas fa-comments"></i> Комментарии</h4>
+                        ${commentFormHTML}
+                    `;
+                    if (newsDetailsContent) {
+                        newsDetailsContent.appendChild(commentsSectionNew);
+                    }
+                }
+            }, 100);
+        }
+        
+    } catch (error) {
+        console.error('Ошибка загрузки деталей новости:', error);
+        showNotification('Ошибка загрузки новости. Попробуйте еще раз.', 'error');
     }
 }
 /**
