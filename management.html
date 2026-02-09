@@ -617,5 +617,27 @@
         }
     });
 </script>
+    <!-- В конце тега body перед закрывающим тегом -->
+<script>
+    // Инициализация при загрузке страницы
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeManagementPage();
+        
+        // Инициализация новостей если функция существует
+        if (typeof initializeNewsModule === 'function') {
+            setTimeout(initializeNewsModule, 500);
+        }
+        
+        // ДОБАВЛЯЕМ: Инициализация улучшенного управления игроками
+        if (typeof initializeEnhancedPlayerManagement === 'function') {
+            setTimeout(initializeEnhancedPlayerManagement, 1000);
+        }
+        
+        // ДОБАВЛЯЕМ: Проверка Storage
+        if (typeof checkStorageAvailability === 'function') {
+            setTimeout(checkStorageAvailability, 2000);
+        }
+    });
+</script>
 </body>
 </html>
