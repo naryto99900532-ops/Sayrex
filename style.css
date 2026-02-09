@@ -1698,3 +1698,229 @@ nav a:hover, nav a.active {
         text-align: center;
     }
 }
+/* Добавляем в конец существующего файла */
+
+/* ДОБАВЛЯЕМ: Стили для мини-деталий игроков */
+.player-details-mini {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin: 10px 0;
+    font-size: 0.9rem;
+}
+
+.mini-detail {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--text-secondary);
+}
+
+.mini-detail i {
+    color: var(--accent);
+    width: 16px;
+}
+
+/* ДОБАВЛЯЕМ: Стили для кнопок перемещения */
+.player-move-buttons {
+    display: flex;
+    gap: 5px;
+    margin-top: 10px;
+}
+
+.move-btn {
+    padding: 5px 10px;
+    background: rgba(255, 215, 0, 0.1);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    color: var(--accent);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-size: 0.9rem;
+    flex: 1;
+}
+
+.move-btn:hover {
+    background: rgba(255, 215, 0, 0.2);
+}
+
+.move-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ДОБАВЛЯЕМ: Стили для перетаскивания */
+.player-management-card[draggable="true"] {
+    cursor: grab;
+    transition: border-color 0.2s;
+}
+
+.player-management-card[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+.player-management-card.dragover {
+    border: 2px dashed var(--accent) !important;
+    background: rgba(255, 215, 0, 0.05);
+}
+
+/* ДОБАВЛЯЕМ: Стили для бейджей игроков */
+.threshold-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin: 10px 0;
+}
+
+.threshold-badge {
+    background: rgba(255, 215, 0, 0.1);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    border-radius: 12px;
+    padding: 3px 8px;
+    font-size: 0.8rem;
+    color: var(--accent);
+}
+
+/* ДОБАВЛЯЕМ: Улучшенные стили для формы редактирования */
+.form-group label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 5px;
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.form-group label i {
+    width: 20px;
+}
+
+/* ДОБАВЛЯЕМ: Валидация полей */
+input:invalid, textarea:invalid {
+    border-color: rgba(255, 68, 68, 0.5) !important;
+}
+
+input:valid, textarea:valid {
+    border-color: rgba(0, 255, 0, 0.3) !important;
+}
+
+/* ДОБАВЛЯЕМ: Стили для предупреждений о валидации */
+.validation-message {
+    color: #ff4444;
+    font-size: 0.8rem;
+    margin-top: 3px;
+    display: none;
+}
+
+input:invalid + .validation-message,
+textarea:invalid + .validation-message {
+    display: block;
+}
+
+/* ДОБАВЛЯЕМ: Анимации для перетаскивания */
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(255, 215, 0, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); }
+}
+
+.drag-pulse {
+    animation: pulse 1.5s infinite;
+}
+
+/* ДОБАВЛЯЕМ: Стили для статуса загрузки изображений */
+.upload-progress {
+    background: rgba(255, 215, 0, 0.1);
+    border-radius: 5px;
+    padding: 10px;
+    margin: 10px 0;
+    display: none;
+}
+
+.upload-progress.active {
+    display: block;
+}
+
+.progress-bar {
+    height: 5px;
+    background: rgba(255, 215, 0, 0.3);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 5px 0;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-glow));
+    width: 0%;
+    transition: width 0.3s;
+}
+
+/* ДОБАВЛЯЕМ: Стили для управления топом */
+.top-controls {
+    background: rgba(17, 17, 17, 0.9);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.control-instruction {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-top: 10px;
+}
+
+/* ДОБАВЛЯЕМ: Адаптивность для мобильных устройств */
+@media (max-width: 768px) {
+    .player-move-buttons {
+        flex-direction: row;
+    }
+    
+    .move-btn {
+        padding: 8px 12px;
+    }
+    
+    .threshold-badges {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .player-details-mini {
+        font-size: 0.8rem;
+    }
+    
+    .player-management-card[draggable="true"] {
+        touch-action: pan-y;
+    }
+}
+
+/* ДОБАВЛЯЕМ: Стили для подсказок */
+.tooltip {
+    position: relative;
+    display: inline-block;
+}
+
+.tooltip .tooltip-text {
+    visibility: hidden;
+    width: 200px;
+    background-color: rgba(0, 0, 0, 0.9);
+    color: var(--text);
+    text-align: center;
+    border-radius: 6px;
+    padding: 8px;
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -100px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    border: 1px solid var(--accent);
+    font-size: 0.85rem;
+}
+
+.tooltip:hover .tooltip-text {
+    visibility: visible;
+    opacity: 1;
+}
