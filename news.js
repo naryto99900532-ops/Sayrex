@@ -1,3 +1,5 @@
+[file name]: news.js
+[file content begin]
 /**
  * Модуль управления новостями и комментариями Bobix Corporation
  * Обеспечивает создание, отображение новостей и управление комментариями
@@ -454,37 +456,357 @@ function handleImageSelection(event) {
  * @returns {Promise<Array>} - Массив URL загруженных изображений
  */
 async function uploadNewsImages(images) {
+    console.log('Начинаем загрузку изображений в Supabase Storage...');
+    
+    // Валидация входных параметров
+    if (!images || images.length === 0) {
+        console.log('Нет изображений для загрузки');
+        return [];
+    }
+    
     const imageUrls = [];
+    const bucketName = 'news-images'; // Имя вашего bucket в Supabase Storage
+    
+    console.log(`Используем bucket: ${bucketName}`);
+    console.log(`Количество изображений для загрузки: ${images.length}`);
+    
+    // Проверяем доступность Storage
+    try {
+        const { data: buckets, error: bucketsError } = await _supabase.storage.listBuckets();
+        if (bucketsError) {
+            console.error('Ошибка при проверке доступности Storage:', bucketsError);
+            throw new Error(`Storage недоступен: ${bucketsError.message}`);
+        }
+        
+        console.log('Доступные buckets:', buckets);
+        
+        const newsBucketExists = buckets.some(bucket => bucket.name === bucketName);
+        if (!newsBucketExists) {
+            console.error(`Bucket "${bucketName}" не найден в Supabase Storage`);
+            console.error('Пожалуйста, создайте bucket "news-images" в панели управления Supabase');
+            throw new Error(`Bucket "${bucketName}" не найден. Создайте его в панели Supabase`);
+        }
+    } catch (error) {
+        console.error('Ошибка при проверке Storage:', error);
+        throw error;
+    }
     
     for (let i = 0; i < images.length; i++) {
         const file = images[i];
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
-        const filePath = `${fileName}`;
+        const fileName = file.name.toLowerCase();
+        
+        console.log(`Обработка изображения ${i + 1}: ${fileName}`);
+        
+        // Проверяем размер файла (максимум 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            console.warn(`Изображение ${fileName} слишком большое (${(file.size / 1024 / 1024).toFixed(2)}MB). Пропускаем.`);
+            continue;
+        }
+        
+        // Проверяем тип файла
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+            console.warn(`Неподдерживаемый тип файла: ${file.type} для ${fileName}. Пропускаем.`);
+            continue;
+        }
+        
+        // Генерируем уникальное имя файла для предотвращения конфликтов
+        const timestamp = Date.now();
+        const randomString = Math.random().toString(36).substring(2, 15);
+        const fileExt = fileName.split('.').pop();
+        const uniqueFileName = `${timestamp}_${randomString}.${fileExt}`;
+        const filePath = `${uniqueFileName}`;
+        
+        console.log(`Генерируем уникальное имя: ${filePath}`);
         
         try {
-            const { error: uploadError } = await _supabase.storage
-                .from(STORAGE_BUCKET)
-                .upload(filePath, file);
+            console.log(`Начинаем загрузку файла ${fileName} в bucket ${bucketName}...`);
+            
+            // Загружаем файл в Supabase Storage
+            const { data: uploadData, error: uploadError } = await _supabase.storage
+                .from(bucketName)
+                .upload(filePath, file, {
+                    cacheControl: '3600',
+                    upsert: false // Не перезаписывать существующие файлы
+                });
             
             if (uploadError) {
-                console.error('Ошибка загрузки изображения:', uploadError);
-                continue; // Пропускаем это изображение, продолжаем с остальными
+                console.error(`Ошибка загрузки изображения ${fileName}:`, uploadError);
+                console.error('Детали ошибки:', {
+                    code: uploadError.code,
+                    message: uploadError.message,
+                    name: uploadError.name,
+                    stack: uploadError.stack
+                });
+                
+                // Пробуем альтернативный подход: удаляем и загружаем заново
+                if (uploadError.message.includes('already exists')) {
+                    console.log(`Файл ${filePath} уже существует. Пробуем удалить и загрузить заново...`);
+                    
+                    // Удаляем существующий файл
+                    const { error: deleteError } = await _supabase.storage
+                        .from(bucketName)
+                        .remove([filePath]);
+                    
+                    if (deleteError) {
+                        console.error(`Ошибка удаления существующего файла:`, deleteError);
+                        continue;
+                    }
+                    
+                    // Пробуем загрузить снова
+                    const { error: retryError } = await _supabase.storage
+                        .from(bucketName)
+                        .upload(filePath, file, {
+                            cacheControl: '3600',
+                            upsert: true // Теперь разрешаем перезапись
+                        });
+                    
+                    if (retryError) {
+                        console.error(`Ошибка повторной загрузки:`, retryError);
+                        continue;
+                    }
+                    
+                    console.log(`Файл успешно перезаписан: ${filePath}`);
+                } else {
+                    continue; // Пропускаем это изображение, продолжаем с остальными
+                }
+            } else {
+                console.log(`Файл успешно загружен:`, uploadData);
             }
             
-            // Получаем публичный URL
-            const { data: { publicUrl } } = _supabase.storage
-                .from(STORAGE_BUCKET)
+            // Получаем публичный URL загруженного изображения
+            console.log(`Получаем публичный URL для файла: ${filePath}`);
+            const { data: urlData } = _supabase.storage
+                .from(bucketName)
                 .getPublicUrl(filePath);
             
+            console.log('Данные URL:', urlData);
+            
+            // Проверяем структуру ответа
+            let publicUrl = '';
+            if (urlData && urlData.publicUrl) {
+                publicUrl = urlData.publicUrl;
+                console.log(`Получен публичный URL: ${publicUrl}`);
+            } else if (urlData && urlData.publicURL) {
+                // Обратная совместимость со старыми версиями Supabase
+                publicUrl = urlData.publicURL;
+                console.log(`Получен публичный URL (старый формат): ${publicUrl}`);
+            } else {
+                console.error('Не удалось получить публичный URL. Структура ответа:', urlData);
+                
+                // Формируем URL вручную на основе стандартного шаблона Supabase
+                const supabaseUrl = "https://tstyjtgcisdelkkltyjo.supabase.co";
+                publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucketName}/${filePath}`;
+                console.log(`Сгенерирован URL вручную: ${publicUrl}`);
+            }
+            
+            // Проверяем валидность URL
+            if (!publicUrl || !publicUrl.startsWith('http')) {
+                console.error(`Некорректный URL для изображения: ${publicUrl}`);
+                
+                // Альтернативный способ формирования URL
+                const altUrl = `https://tstyjtgcisdelkkltyjo.supabase.co/storage/v1/object/public/${bucketName}/${filePath}`;
+                console.log(`Используем альтернативный URL: ${altUrl}`);
+                publicUrl = altUrl;
+            }
+            
             imageUrls.push(publicUrl);
+            console.log(`Изображение ${i + 1} успешно обработано. URL добавлен в массив.`);
             
         } catch (error) {
-            console.error('Ошибка при обработке изображения:', error);
+            console.error('Критическая ошибка при обработке изображения:', error);
+            console.error('Stack trace:', error.stack);
+            
+            // Продолжаем обработку остальных изображений
+            continue;
         }
     }
     
+    console.log(`Загрузка завершена. Успешно загружено ${imageUrls.length} из ${images.length} изображений.`);
+    console.log('URL загруженных изображений:', imageUrls);
+    
     return imageUrls;
+}
+
+/**
+ * Вспомогательная функция для тестирования подключения к Storage
+ */
+async function testStorageConnection() {
+    console.log('Тестирование подключения к Supabase Storage...');
+    
+    try {
+        const bucketName = 'news-images';
+        
+        // Проверяем доступность buckets
+        const { data: buckets, error: bucketsError } = await _supabase.storage.listBuckets();
+        
+        if (bucketsError) {
+            console.error('Ошибка при проверке доступности Storage:', bucketsError);
+            return {
+                success: false,
+                error: bucketsError.message,
+                message: 'Storage недоступен. Проверьте настройки Supabase.'
+            };
+        }
+        
+        console.log('Доступные buckets:', buckets);
+        
+        // Проверяем существование нужного bucket
+        const newsBucketExists = buckets.some(bucket => bucket.name === bucketName);
+        
+        if (!newsBucketExists) {
+            console.error(`Bucket "${bucketName}" не найден`);
+            return {
+                success: false,
+                error: 'Bucket не найден',
+                message: `Bucket "${bucketName}" не найден. Создайте его в панели Supabase.`
+            };
+        }
+        
+        console.log(`Bucket "${bucketName}" найден`);
+        
+        // Проверяем права доступа (пытаемся получить список файлов)
+        const { data: files, error: filesError } = await _supabase.storage
+            .from(bucketName)
+            .list();
+        
+        if (filesError) {
+            console.error('Ошибка при проверке прав доступа:', filesError);
+            return {
+                success: false,
+                error: filesError.message,
+                message: 'Нет прав доступа к bucket. Настройте политики в Supabase.'
+            };
+        }
+        
+        console.log('Права доступа подтверждены. Файлы в bucket:', files);
+        
+        return {
+            success: true,
+            message: 'Подключение к Storage успешно установлено',
+            bucket: bucketName,
+            fileCount: files.length
+        };
+        
+    } catch (error) {
+        console.error('Критическая ошибка при тестировании Storage:', error);
+        return {
+            success: false,
+            error: error.message,
+            message: 'Непредвиденная ошибка при тестировании Storage'
+        };
+    }
+}
+
+/**
+ * Вспомогательная функция для создания bucket если он не существует
+ * ВАЖНО: Эта функция требует прав администратора в Supabase
+ */
+async function createNewsBucketIfNotExists() {
+    console.log('Проверка и создание bucket "news-images"...');
+    
+    try {
+        const bucketName = 'news-images';
+        
+        // Проверяем существующие buckets
+        const { data: buckets, error: bucketsError } = await _supabase.storage.listBuckets();
+        
+        if (bucketsError) {
+            console.error('Ошибка при получении списка buckets:', bucketsError);
+            return { success: false, error: bucketsError.message };
+        }
+        
+        const bucketExists = buckets.some(bucket => bucket.name === bucketName);
+        
+        if (!bucketExists) {
+            console.log(`Bucket "${bucketName}" не найден. Пытаемся создать...`);
+            
+            // ВНИМАНИЕ: Создание buckets через JS клиент может не поддерживаться
+            // Эта операция обычно выполняется в панели управления Supabase
+            
+            // Показываем инструкцию пользователю
+            console.log(`
+            ================================================
+            ВНИМАНИЕ: Bucket "news-images" не существует!
+            ================================================
+            
+            Чтобы создать bucket:
+            1. Перейдите в панель управления Supabase: https://app.supabase.com
+            2. Выберите ваш проект
+            3. Перейдите в раздел "Storage"
+            4. Нажмите "New Bucket"
+            5. Введите имя: "news-images"
+            6. Установите настройки доступа:
+               - Public: разрешает публичный доступ
+               - Нажмите "Create Bucket"
+            7. Настройте политики безопасности (CORS)
+            
+            После создания вернитесь на сайт.
+            `);
+            
+            return { 
+                success: false, 
+                needsManualSetup: true,
+                message: 'Bucket не найден. Требуется создать вручную в панели Supabase.'
+            };
+        }
+        
+        console.log(`Bucket "${bucketName}" уже существует`);
+        return { success: true, message: 'Bucket готов к использованию' };
+        
+    } catch (error) {
+        console.error('Ошибка при проверке bucket:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Вспомогательная функция для настройки CORS политик
+ */
+function setupStorageCorsInstructions() {
+    console.log(`
+    ================================================
+    ИНСТРУКЦИЯ ПО НАСТРОЙКЕ CORS ДЛЯ SUPABASE STORAGE
+    ================================================
+    
+    Для загрузки изображений необходимо настроить CORS в Supabase:
+    
+    1. Перейдите в панель Supabase: https://app.supabase.com
+    2. Выберите ваш проект
+    3. Перейдите в раздел "Storage"
+    4. Нажмите на кнопку "Policies" рядом с bucket "news-images"
+    5. Убедитесь, что есть политика для анонимного доступа:
+    
+    Разрешения для SELECT (чтение):
+    - Authenticated: true
+    - Operation: SELECT
+    - Policy name: Allow public read access
+    - USING Expression: auth.role() = 'authenticated'
+    
+    Разрешения для INSERT (запись):
+    - Authenticated: true
+    - Operation: INSERT
+    - Policy name: Allow authenticated upload
+    - USING Expression: auth.role() = 'authenticated'
+    
+    6. Для CORS настройте в разделе "Settings" -> "CORS Configuration":
+    - Origin: https://ваш-сайт.netlify.app
+    - Или для разработки: http://localhost:*
+    - Methods: GET, POST, PUT, DELETE, OPTIONS
+    - Headers: *
+    - Max Age: 3600
+    
+    Без этих настроек загрузка изображений не будет работать!
+    `);
+    
+    return {
+        title: 'Инструкция по настройке CORS',
+        steps: [
+            'Зайдите в панель Supabase -> Storage -> Policies',
+            'Настройте политики доступа для bucket "news-images"',
+            'Добавьте CORS настройки для вашего домена'
+        ]
+    };
 }
 
 /**
@@ -535,10 +857,45 @@ async function handleAddNewsSubmit(e) {
         
         // Загружаем изображения если они есть
         if (selectedImages.length > 0) {
-            imageUrls = await uploadNewsImages(selectedImages);
+            console.log('Начинаем загрузку изображений...');
+            console.log('Количество изображений:', selectedImages.length);
+            console.log('Размер первого изображения:', selectedImages[0]?.size);
+            
+            // Тестируем подключение к Storage перед загрузкой
+            const storageTest = await testStorageConnection();
+            if (!storageTest.success) {
+                console.error('Ошибка подключения к Storage:', storageTest);
+                showNotification(`Ошибка загрузки изображений: ${storageTest.message} Проверьте настройки Supabase Storage.`, 'error');
+                
+                // Предлагаем инструкцию по настройке
+                setupStorageCorsInstructions();
+                
+                // Продолжаем без изображений
+                showNotification('Публикую новость без изображений...', 'warning');
+            } else {
+                console.log('Подключение к Storage успешно:', storageTest);
+                
+                // Загружаем изображения
+                imageUrls = await uploadNewsImages(selectedImages);
+                
+                if (imageUrls.length > 0) {
+                    console.log(`Успешно загружено ${imageUrls.length} изображений:`, imageUrls);
+                    showNotification(`Загружено ${imageUrls.length} изображений`, 'success');
+                } else {
+                    console.warn('Не удалось загрузить изображения');
+                    showNotification('Не удалось загрузить изображения. Проверьте настройки Storage.', 'warning');
+                }
+            }
+        } else {
+            console.log('Нет изображений для загрузки');
         }
         
         // Создаем новость в базе данных
+        console.log('Создаем новость в базе данных...');
+        console.log('Заголовок:', title);
+        console.log('Длина содержания:', content.length);
+        console.log('Количество изображений для сохранения:', imageUrls.length);
+        
         const { data, error } = await _supabase
             .from('news')
             .insert([
@@ -554,11 +911,19 @@ async function handleAddNewsSubmit(e) {
             .select();
         
         if (error) {
+            console.error('Ошибка создания новости в базе данных:', error);
             throw error;
         }
         
+        console.log('Новость успешно создана:', data);
+        
         // Показываем успешное сообщение
-        showNotification('Новость успешно опубликована!', 'success');
+        const imageCount = imageUrls.length;
+        const successMessage = imageCount > 0 
+            ? `Новость успешно опубликована с ${imageCount} изображениями!` 
+            : 'Новость успешно опубликована!';
+        
+        showNotification(successMessage, 'success');
         
         // Сбрасываем форму
         resetNewsForm();
@@ -572,7 +937,21 @@ async function handleAddNewsSubmit(e) {
         
     } catch (error) {
         console.error('Ошибка публикации новости:', error);
-        showNotification(`Ошибка публикации новости: ${error.message}`, 'error');
+        
+        let errorMessage = `Ошибка публикации новости: ${error.message}`;
+        
+        // Более дружелюбные сообщения об ошибках
+        if (error.message.includes('Storage')) {
+            errorMessage += '\n\nПроверьте настройки Supabase Storage:';
+            errorMessage += '\n1. Bucket "news-images" существует?';
+            errorMessage += '\n2. Настроены политики доступа?';
+            errorMessage += '\n3. Добавлен ваш домен в CORS настройки?';
+            
+            // Показываем инструкцию
+            setupStorageCorsInstructions();
+        }
+        
+        showNotification(errorMessage, 'error');
     } finally {
         // Восстанавливаем кнопку
         submitBtn.innerHTML = originalText;
@@ -685,18 +1064,25 @@ async function openNewsDetails(newsId) {
         // Генерируем HTML для изображений
         let imagesHTML = '';
         if (news.image_urls && news.image_urls.length > 0) {
+            console.log('Загружаем изображения новости:', news.image_urls);
+            
             imagesHTML = `
                 <div class="news-details-images">
-                    <h4><i class="fas fa-images"></i> Прикрепленные изображения</h4>
+                    <h4><i class="fas fa-images"></i> Прикрепленные изображения (${news.image_urls.length})</h4>
                     <div class="news-images-grid">
-                        ${news.image_urls.map(url => `
-                            <div class="news-image-item">
-                                <img src="${url}" alt="Изображение новости" onclick="openImageModal('${url}')">
-                            </div>
-                        `).join('')}
+                        ${news.image_urls.map((url, index) => {
+                            console.log(`Изображение ${index + 1}: ${url}`);
+                            return `
+                                <div class="news-image-item">
+                                    <img src="${url}" alt="Изображение новости ${index + 1}" onclick="openImageModal('${url}')">
+                                </div>
+                            `;
+                        }).join('')}
                     </div>
                 </div>
             `;
+        } else {
+            console.log('У новости нет изображений');
         }
         
         // Генерируем HTML для комментариев
@@ -1132,4 +1518,10 @@ if (typeof window !== 'undefined') {
     window.cancelCommentEdit = cancelCommentEdit;
     window.escapeHtml = escapeHtml; // И эту тоже
     window.showNotification = showNotification; // И эту
+    
+    // Новые вспомогательные функции для отладки
+    window.testStorageConnection = testStorageConnection;
+    window.createNewsBucketIfNotExists = createNewsBucketIfNotExists;
+    window.setupStorageCorsInstructions = setupStorageCorsInstructions;
 }
+[file content end]
