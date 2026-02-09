@@ -315,58 +315,113 @@ function handleImageSelection(event) {
  * @returns {Promise<Array>} - Массив URL загруженных изображений
  */
 async function uploadNewsImages(images) {
-    const imageUrls = [];
+    console.log('=== НАЧАЛО ЗАГРУЗКИ ИЗОБРАЖЕНИЙ ===');
     
-    // Проверяем доступность storage
-    const bucketAvailable = await checkStorageBucket();
-    if (!bucketAvailable) {
-        showNotification('Ошибка загрузки изображений: storage недоступен', 'error');
-        return imageUrls;
+    if (!images || images.length === 0) {
+        console.log('Нет изображений для загрузки');
+        return [];
     }
+
+    const imageUrls = [];
+    const bucketName = 'news-images'; // Убедитесь, что bucket с таким именем существует в Supabase
     
+    console.log(`Bucket: ${bucketName}, Количество изображений: ${images.length}`);
+
     for (let i = 0; i < images.length; i++) {
         const file = images[i];
-        
-        // Проверяем размер файла (максимум 5MB)
+        console.log(`Обработка файла ${i + 1}: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+
+        // Валидация размера файла (макс 5MB)
         if (file.size > 5 * 1024 * 1024) {
-            showNotification(`Изображение ${file.name} слишком большое (макс. 5MB)`, 'warning');
+            console.warn(`Файл ${file.name} слишком большой. Пропускаем.`);
             continue;
         }
+
+        // Генерируем уникальное имя файла
+        const timestamp = Date.now();
+        const randomString = Math.random().toString(36).substring(2, 15);
+        const fileExt = file.name.split('.').pop().toLowerCase();
+        const uniqueFileName = `${timestamp}_${randomString}.${fileExt}`;
+        const filePath = `${uniqueFileName}`;
         
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${Date.now()}_${i}_${Math.random().toString(36).substring(2)}.${fileExt}`;
-        const filePath = `${fileName}`;
-        
+        console.log(`Уникальное имя файла: ${filePath}`);
+
         try {
-            console.log(`Загрузка изображения ${i + 1}/${images.length}: ${file.name}`);
-            
-            const { data, error: uploadError } = await _supabase.storage
-                .from(STORAGE_BUCKET)
+            // 1. Загружаем файл в Supabase Storage
+            console.log(`Пытаемся загрузить в Storage...`);
+            const { data: uploadData, error: uploadError } = await _supabase.storage
+                .from(bucketName)
                 .upload(filePath, file, {
                     cacheControl: '3600',
-                    upsert: false
+                    upsert: true // Разрешаем перезапись
                 });
-            
+
             if (uploadError) {
-                console.error('Ошибка загрузки изображения:', uploadError);
-                showNotification(`Ошибка загрузки ${file.name}`, 'warning');
-                continue;
+                console.error('Ошибка загрузки:', uploadError);
+                
+                // Если файл уже существует, пробуем другое имя
+                if (uploadError.message.includes('already exists')) {
+                    console.log('Файл уже существует, генерируем новое имя...');
+                    const retryFileName = `${timestamp}_${randomString}_retry.${fileExt}`;
+                    
+                    const { error: retryError } = await _supabase.storage
+                        .from(bucketName)
+                        .upload(retryFileName, file, {
+                            cacheControl: '3600',
+                            upsert: true
+                        });
+                    
+                    if (retryError) {
+                        console.error('Ошибка при повторной попытке:', retryError);
+                        continue;
+                    }
+                    
+                    filePath = retryFileName;
+                    console.log(`Загружено с новым именем: ${retryFileName}`);
+                } else {
+                    continue;
+                }
+            } else {
+                console.log('Файл успешно загружен');
             }
-            
-            // Получаем публичный URL
-            const { data: { publicUrl } } = _supabase.storage
-                .from(STORAGE_BUCKET)
+
+            // 2. Получаем публичный URL
+            console.log('Получаем публичный URL...');
+            const { data: urlData } = _supabase.storage
+                .from(bucketName)
                 .getPublicUrl(filePath);
+
+            console.log('Данные URL:', urlData);
+
+            // Проверяем разные возможные структуры ответа
+            let publicUrl = '';
             
-            console.log('Изображение загружено:', publicUrl);
-            imageUrls.push(publicUrl);
-            
+            if (urlData && urlData.publicUrl) {
+                publicUrl = urlData.publicUrl;
+            } else if (urlData && urlData.publicURL) { // Старый формат
+                publicUrl = urlData.publicURL;
+            } else {
+                // Формируем URL вручную
+                const supabaseUrl = "https://tstyjtgcisdelkkltyjo.supabase.co";
+                publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucketName}/${filePath}`;
+                console.log('Сгенерирован URL вручную');
+            }
+
+            // 3. Проверяем, что URL валидный
+            if (publicUrl && publicUrl.startsWith('http')) {
+                console.log(`Успешно: ${publicUrl}`);
+                imageUrls.push(publicUrl);
+            } else {
+                console.error('Некорректный URL:', publicUrl);
+            }
+
         } catch (error) {
-            console.error('Ошибка при обработке изображения:', error);
-            showNotification(`Ошибка обработки ${file.name}`, 'warning');
+            console.error('Критическая ошибка при обработке изображения:', error);
+            continue;
         }
     }
-    
+
+    console.log(`=== ЗАВЕРШЕНО. Загружено ${imageUrls.length} изображений ===`);
     return imageUrls;
 }
 
