@@ -499,6 +499,40 @@ async function movePlayerInTop(playerId, direction) {
 }
 
 /**
+ * Проверка формата Discord
+ */
+function isValidDiscord(discord) {
+    if (!discord) return true; // Discord может быть пустым
+    
+    // Проверяем формат username#0000
+    const discordRegex = /^[a-zA-Z0-9_.]{2,32}#[0-9]{4}$/;
+    return discordRegex.test(discord);
+}
+
+/**
+ * Экранирование HTML для безопасности
+ * @param {string} text - Текст для экранирования
+ * @returns {string} - Экранированный текст
+ */
+function escapeHtml(text) {
+    if (typeof text !== 'string') return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+/**
+ * Показать уведомление
+ */
+function showNotification(message, type = 'info') {
+    if (typeof window.showNotification === 'function') {
+        window.showNotification(message, type);
+    } else {
+        alert(message);
+    }
+}
+
+/**
  * Экспорт функций для глобального использования
  */
 if (typeof window !== 'undefined') {
@@ -509,4 +543,5 @@ if (typeof window !== 'undefined') {
     window.enhancedDeletePlayer = enhancedDeletePlayer;
     window.movePlayerInTop = movePlayerInTop;
     window.updatePlayerRanksAfterDrag = updatePlayerRanksAfterDrag;
+    window.escapeHtml = escapeHtml;
 }
