@@ -1183,4 +1183,54 @@ if (typeof window !== 'undefined') {
     window.cancelCommentEdit = cancelCommentEdit;
     window.escapeHtml = escapeHtml;
     window.showNotification = showNotification;
+    /**
+ * Простая проверка работы Supabase Storage
+ */
+async function testSimpleUpload() {
+    console.log('=== ПРОСТОЙ ТЕСТ ЗАГРУЗКИ ===');
+    
+    // Создаем маленький тестовый файл
+    const testContent = 'Тестовый файл для проверки загрузки';
+    const testFile = new File([testContent], 'test.txt', { type: 'text/plain' });
+    
+    try {
+        const bucketName = 'news-images';
+        
+        console.log('1. Пробуем загрузить тестовый файл...');
+        
+        const { data, error } = await _supabase.storage
+            .from(bucketName)
+            .upload(`test_${Date.now()}.txt`, testFile, {
+                upsert: true
+            });
+        
+        if (error) {
+            console.error('❌ Ошибка загрузки:', error);
+            console.log('✅ Проверьте в Supabase:');
+            console.log('   1. Bucket "news-images" существует?');
+            console.log('   2. Политики доступа настроены?');
+            console.log('   3. CORS настроен для вашего домена?');
+            return false;
+        }
+        
+        console.log('✅ Файл загружен:', data);
+        
+        // Получаем URL
+        const { data: urlData } = _supabase.storage
+            .from(bucketName)
+            .getPublicUrl(data.path);
+        
+        console.log('✅ URL файла:', urlData);
+        return true;
+        
+    } catch (err) {
+        console.error('❌ Ошибка:', err);
+        return false;
+    }
+}
+
+// Добавьте в экспорт
+if (typeof window !== 'undefined') {
+    window.testSimpleUpload = testSimpleUpload;
+}
 }
