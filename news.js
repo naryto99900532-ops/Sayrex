@@ -7,62 +7,229 @@
 let newsData = [];
 let currentNewsId = null;
 let selectedImages = [];
-let newsComments = {};
+
+// Получаем константы из db.js если они не определены
+const STORAGE_BUCKET = window.STORAGE_BUCKET || 'news-images';
+const STORAGE_URL = window.STORAGE_URL || 'https://tstyjtgcisdelkkltyjo.storage.supabase.co';
 
 /**
- * Проверяет доступность Storage Bucket
+ * Открытие деталей новости
+ * @param {string} newsId - ID новости
  */
-async function checkStorageBucket() {
+async function openNewsDetails(newsId) {
     try {
-        if (!_supabase || !_supabase.storage) {
-            console.error('Supabase storage недоступен');
-            return false;
+        currentNewsId = newsId;
+        
+        // Получаем данные новости
+        const { data: news, error: newsError } = await _supabase
+            .from('news')
+            .select('*')
+            .eq('id', newsId)
+            .single();
+        
+        if (newsError) {
+            console.error('Ошибка загрузки новости:', newsError);
+            throw newsError;
         }
         
-        // Пробуем получить список bucket'ов
-        const { data, error } = await _supabase.storage.listBuckets();
+        // Упрощенная информация об авторе
+        const author = { username: 'Автор новости' };
         
-        if (error) {
-            console.error('Ошибка при проверке bucket:', error);
-            return false;
+        // Получаем комментарии
+        let comments = [];
+        try {
+            const { data: commentsData, error: commentsError } = await _supabase
+                .from('news_comments')
+                .select('*')
+                .eq('news_id', newsId)
+                .order('created_at', { ascending: true });
+            
+            if (!commentsError && commentsData) {
+                comments = commentsData;
+            }
+        } catch (commentsError) {
+            console.log('Ошибка загрузки комментариев:', commentsError);
         }
         
-        const bucketExists = data.some(bucket => bucket.name === STORAGE_BUCKET);
+        // Форматируем дату
+        const newsDate = new Date(news.created_at).toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
         
-        if (!bucketExists) {
-            console.error(`Bucket "${STORAGE_BUCKET}" не найден в Supabase Storage`);
-            showNotification(`Создайте bucket "${STORAGE_BUCKET}" в Supabase Storage`, 'error');
-            return false;
+        // Генерируем HTML для изображений
+        let imagesHTML = '';
+        if (news.image_urls && news.image_urls.length > 0) {
+            imagesHTML = `
+                <div class="news-details-images">
+                    <h4><i class="fas fa-images"></i> Прикрепленные изображения</h4>
+                    <div class="news-images-grid">
+                        ${news.image_urls.map(url => `
+                            <div class="news-image-item">
+                                <img src="${url}" alt="Изображение новости" onclick="openImageModal('${url}')">
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
         }
         
-        console.log(`Bucket "${STORAGE_BUCKET}" доступен`);
-        return true;
+        // Генерируем HTML для комментариев
+        let commentsHTML = '';
+        if (comments && comments.length > 0) {
+            commentsHTML = `
+                <div class="news-comments-section">
+                    <h4><i class="fas fa-comments"></i> Комментарии (${comments.length})</h4>
+                    <div class="comments-list">
+                        ${comments.map(comment => {
+                            const commentDate = new Date(comment.created_at).toLocaleDateString('ru-RU', {
+                                day: 'numeric',
+                                month: 'short',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            });
+                            const isCommentAuthor = comment.author_id === currentUser?.id;
+                            const canDelete = isCommentAuthor || (currentUserRole === 'admin' || currentUserRole === 'owner');
+                            
+                            return `
+                                <div class="comment-item" id="comment-${comment.id}">
+                                    <div class="comment-header">
+                                        <div class="comment-author">
+                                            <i class="fas fa-user"></i>
+                                            <span>${escapeHtml('Пользователь')}</span>
+                                        </div>
+                                        <div class="comment-date">${commentDate}</div>
+                                    </div>
+                                    <div class="comment-content">${escapeHtml(comment.content)}</div>
+                                    <div class="comment-actions">
+                                        ${isCommentAuthor ? `
+                                            <button class="comment-btn edit" onclick="editComment('${comment.id}')">
+                                                <i class="fas fa-edit"></i> Редактировать
+                                            </button>
+                                        ` : ''}
+                                        ${canDelete ? `
+                                            <button class="comment-btn delete" onclick="deleteComment('${comment.id}')">
+                                                <i class="fas fa-trash"></i> Удалить
+                                            </button>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Заполняем модальное окно
+        const newsDetailsTitle = document.getElementById('newsDetailsTitle');
+        const newsDetailsAuthor = document.getElementById('newsDetailsAuthor');
+        const newsDetailsDate = document.getElementById('newsDetailsDate');
+        const newsDetailsContent = document.getElementById('newsDetailsContent');
+        
+        if (newsDetailsTitle) newsDetailsTitle.textContent = escapeHtml(news.title);
+        if (newsDetailsAuthor) {
+            newsDetailsAuthor.innerHTML = `
+                <i class="fas fa-user"></i> ${escapeHtml(author.username)}
+            `;
+        }
+        if (newsDetailsDate) {
+            newsDetailsDate.innerHTML = `
+                <i class="fas fa-calendar"></i> ${newsDate}
+            `;
+        }
+        if (newsDetailsContent) {
+            newsDetailsContent.innerHTML = `
+                <div class="news-details-text">
+                    ${escapeHtml(news.content).replace(/\n/g, '<br>')}
+                </div>
+                ${imagesHTML}
+                ${commentsHTML}
+            `;
+        }
+        
+        // Показываем кнопку удаления для админов (только в management.html)
+        const deleteBtnContainer = document.querySelector('.news-details-actions');
+        if (deleteBtnContainer && (currentUserRole === 'admin' || currentUserRole === 'owner')) {
+            deleteBtnContainer.style.display = 'block';
+        }
+        
+        // Показываем модальное окно
+        const newsDetailsModal = document.getElementById('newsDetailsModal');
+        if (newsDetailsModal) {
+            newsDetailsModal.style.display = 'flex';
+        }
+        
+        // Добавляем форму для комментариев если пользователь авторизован
+        if (currentUser) {
+            // Даем время для отрисовки контента
+            setTimeout(() => {
+                const commentsSection = document.getElementById('newsDetailsContent')?.querySelector('.news-comments-section');
+                const commentFormHTML = `
+                    <div class="add-comment-form">
+                        <h5><i class="fas fa-comment-medical"></i> Добавить комментарий</h5>
+                        <form id="addCommentForm" onsubmit="event.preventDefault(); if (typeof addComment === 'function') addComment(event);">
+                            <textarea 
+                                id="commentContent" 
+                                placeholder="Напишите ваш комментарий..." 
+                                rows="3" 
+                                required
+                            ></textarea>
+                            <button type="submit" class="btn-yellow">
+                                <i class="fas fa-paper-plane"></i> Отправить
+                            </button>
+                        </form>
+                    </div>
+                `;
+                
+                if (commentsSection) {
+                    commentsSection.insertAdjacentHTML('beforeend', commentFormHTML);
+                } else {
+                    // Если нет комментариев, создаем секцию
+                    const commentsSectionNew = document.createElement('div');
+                    commentsSectionNew.className = 'news-comments-section';
+                    commentsSectionNew.innerHTML = `
+                        <h4><i class="fas fa-comments"></i> Комментарии</h4>
+                        ${commentFormHTML}
+                    `;
+                    if (newsDetailsContent) {
+                        newsDetailsContent.appendChild(commentsSectionNew);
+                    }
+                }
+            }, 100);
+        }
         
     } catch (error) {
-        console.error('Ошибка при проверке storage:', error);
-        return false;
+        console.error('Ошибка загрузки деталей новости:', error);
+        showNotification('Ошибка загрузки новости. Попробуйте еще раз.', 'error');
     }
+}
+
+/**
+ * Экранирование HTML для безопасности
+ * @param {string} text - Текст для экранирования
+ * @returns {string} - Экранированный текст
+ */
+function escapeHtml(text) {
+    if (typeof text !== 'string') return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 /**
  * Инициализация модуля новостей
  */
-async function initializeNewsModule() {
-    try {
-        // Проверяем доступность storage
-        await checkStorageBucket();
-        
-        // Назначаем обработчики событий для новостей
-        setupNewsEventHandlers();
-        
-        // Загружаем новости если на странице есть соответствующий элемент
-        if (document.getElementById('newsList') || document.getElementById('newsListIndex')) {
-            await loadNews();
-        }
-        
-    } catch (error) {
-        console.error('Ошибка инициализации модуля новостей:', error);
-        showNotification('Ошибка загрузки модуля новостей', 'error');
+function initializeNewsModule() {
+    // Назначаем обработчики событий для новостей
+    setupNewsEventHandlers();
+    
+    // Загружаем новости если на странице есть соответствующий элемент
+    if (document.getElementById('newsList') || document.getElementById('newsListIndex')) {
+        loadNews();
     }
 }
 
@@ -86,15 +253,6 @@ function setupNewsEventHandlers() {
     const imageInput = document.getElementById('newsImages');
     if (imageInput) {
         imageInput.addEventListener('change', handleImageSelection);
-    }
-    
-    // Обработчики для модальных окон новостей на главной странице
-    const closeNewsDetails = document.querySelector('.close-news-details');
-    if (closeNewsDetails) {
-        closeNewsDetails.addEventListener('click', function() {
-            const newsDetailsModal = document.getElementById('newsDetailsModal');
-            if (newsDetailsModal) newsDetailsModal.style.display = 'none';
-        });
     }
     
     // Кнопки закрытия модальных окон
@@ -141,7 +299,7 @@ async function loadNews() {
             </div>
         `;
         
-        // Получаем новости
+        // Получаем новости (без связи с профилями)
         const { data: news, error } = await _supabase
             .from('news')
             .select('*')
@@ -163,12 +321,14 @@ async function loadNews() {
                 
                 return {
                     ...newsItem,
+                    author: { username: 'Автор новости' },
                     comments_count: countError ? 0 : (count || 0)
                 };
             } catch (commentError) {
                 console.log('Ошибка загрузки комментариев для новости:', commentError);
                 return {
                     ...newsItem,
+                    author: { username: 'Автор новости' },
                     comments_count: 0
                 };
             }
@@ -215,6 +375,7 @@ function renderNewsList(news) {
     let html = '';
     
     news.forEach((newsItem, index) => {
+        const authorName = newsItem.author?.username || 'Автор новости';
         const newsDate = new Date(newsItem.created_at).toLocaleDateString('ru-RU', {
             day: 'numeric',
             month: 'long',
@@ -228,12 +389,13 @@ function renderNewsList(news) {
             ? escapeHtml(newsItem.content.substring(0, 150)) + '...' 
             : escapeHtml(newsItem.content);
         
+        // Безопасный вызов openNewsDetails - всегда доступен
         html += `
             <div class="news-card" onclick="safeOpenNewsDetails('${newsItem.id}')">
                 <div class="news-header">
                     <h3 class="news-title">${escapeHtml(newsItem.title)}</h3>
                     <div class="news-meta">
-                        <span class="news-author"><i class="fas fa-user"></i> Новость клана</span>
+                        <span class="news-author"><i class="fas fa-user"></i> ${escapeHtml(authorName)}</span>
                         <span class="news-date"><i class="fas fa-calendar"></i> ${newsDate}</span>
                     </div>
                 </div>
@@ -310,6 +472,47 @@ function handleImageSelection(event) {
 }
 
 /**
+ * Проверяет доступность Storage Bucket
+ */
+async function checkStorageBucket() {
+    try {
+        console.log('Проверка bucket:', STORAGE_BUCKET);
+        
+        if (!_supabase || !_supabase.storage) {
+            console.error('Supabase storage недоступен');
+            return false;
+        }
+        
+        // Пробуем получить информацию о bucket
+        try {
+            const { data, error } = await _supabase.storage.getBucket(STORAGE_BUCKET);
+            
+            if (error) {
+                console.error('Ошибка при проверке bucket:', error);
+                
+                // Если bucket не существует, показываем инструкцию
+                if (error.message.includes('not exist') || error.message.includes('not found')) {
+                    showNotification(`Bucket "${STORAGE_BUCKET}" не найден. Создайте его в Supabase Storage.`, 'error');
+                }
+                
+                return false;
+            }
+            
+            console.log(`Bucket "${STORAGE_BUCKET}" доступен`);
+            return true;
+            
+        } catch (bucketError) {
+            console.error('Ошибка при проверке bucket:', bucketError);
+            return false;
+        }
+        
+    } catch (error) {
+        console.error('Ошибка при проверке storage:', error);
+        return false;
+    }
+}
+
+/**
  * Загрузка изображений в Supabase Storage
  * @param {Array} images - Массив файлов изображений
  * @returns {Promise<Array>} - Массив URL загруженных изображений
@@ -317,10 +520,12 @@ function handleImageSelection(event) {
 async function uploadNewsImages(images) {
     const imageUrls = [];
     
+    console.log('Начало загрузки изображений в bucket:', STORAGE_BUCKET);
+    
     // Проверяем доступность storage
     const bucketAvailable = await checkStorageBucket();
     if (!bucketAvailable) {
-        showNotification('Ошибка загрузки изображений: storage недоступен', 'error');
+        showNotification('Хранилище изображений недоступно. Проверьте настройки Supabase Storage.', 'error');
         return imageUrls;
     }
     
@@ -333,39 +538,52 @@ async function uploadNewsImages(images) {
             continue;
         }
         
-        const fileExt = file.name.split('.').pop();
+        const fileExt = file.name.split('.').pop().toLowerCase();
         const fileName = `${Date.now()}_${i}_${Math.random().toString(36).substring(2)}.${fileExt}`;
-        const filePath = `${fileName}`;
+        
+        console.log(`Загрузка изображения ${i + 1}/${images.length}: ${fileName}`);
         
         try {
-            console.log(`Загрузка изображения ${i + 1}/${images.length}: ${file.name}`);
-            
             const { data, error: uploadError } = await _supabase.storage
                 .from(STORAGE_BUCKET)
-                .upload(filePath, file, {
+                .upload(fileName, file, {
                     cacheControl: '3600',
                     upsert: false
                 });
             
             if (uploadError) {
                 console.error('Ошибка загрузки изображения:', uploadError);
-                showNotification(`Ошибка загрузки ${file.name}`, 'warning');
+                showNotification(`Ошибка загрузки ${file.name}: ${uploadError.message}`, 'warning');
                 continue;
             }
+            
+            console.log('Изображение загружено:', data);
             
             // Получаем публичный URL
             const { data: { publicUrl } } = _supabase.storage
                 .from(STORAGE_BUCKET)
-                .getPublicUrl(filePath);
+                .getPublicUrl(fileName);
             
-            console.log('Изображение загружено:', publicUrl);
-            imageUrls.push(publicUrl);
+            console.log('Публичный URL:', publicUrl);
+            
+            // Проверяем, что URL действительный
+            if (!publicUrl) {
+                console.error('Некорректный публичный URL');
+                // Пробуем сформировать URL вручную
+                const manualUrl = `${STORAGE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${fileName}`;
+                console.log('Ручной URL:', manualUrl);
+                imageUrls.push(manualUrl);
+            } else {
+                imageUrls.push(publicUrl);
+            }
             
         } catch (error) {
             console.error('Ошибка при обработке изображения:', error);
             showNotification(`Ошибка обработки ${file.name}`, 'warning');
         }
     }
+    
+    console.log('Загрузка завершена. Загружено изображений:', imageUrls.length);
     
     return imageUrls;
 }
@@ -422,8 +640,8 @@ async function handleAddNewsSubmit(e) {
             imageUrls = await uploadNewsImages(selectedImages);
             
             if (imageUrls.length === 0 && selectedImages.length > 0) {
-                showNotification('Не удалось загрузить изображения. Продолжить без них?', 'warning');
-                if (!confirm('Продолжить публикацию без изображений?')) {
+                const continueWithoutImages = confirm('Не удалось загрузить изображения. Продолжить публикацию новости без изображений?');
+                if (!continueWithoutImages) {
                     submitBtn.innerHTML = originalText;
                     submitBtn.disabled = false;
                     return;
@@ -465,7 +683,15 @@ async function handleAddNewsSubmit(e) {
         
     } catch (error) {
         console.error('Ошибка публикации новости:', error);
-        showNotification(`Ошибка публикации новости: ${error.message}`, 'error');
+        
+        // Показываем детальную информацию об ошибке
+        let errorMessage = error.message;
+        if (error.message.includes('bucket') || error.message.includes('storage')) {
+            errorMessage = 'Ошибка хранилища. Проверьте: 1) Bucket создан в Supabase Storage, 2) Bucket публичный, 3) Политики настроены правильно.';
+        }
+        
+        showNotification(`Ошибка публикации новости: ${errorMessage}`, 'error');
+        
     } finally {
         // Восстанавливаем кнопку
         submitBtn.innerHTML = originalText;
@@ -507,6 +733,67 @@ async function openNewsDetails(newsId) {
             throw newsError;
         }
         
+        // Получаем информацию об авторе
+        let author = { username: 'Неизвестный автор' };
+        if (news.author_id) {
+            try {
+                const { data: authorData, error: authorError } = await _supabase
+                    .from('profiles')
+                    .select('username, avatar_url')
+                    .eq('id', news.author_id)
+                    .single();
+                
+                if (!authorError && authorData) {
+                    author = authorData;
+                }
+            } catch (authorError) {
+                console.log('Ошибка загрузки автора:', authorError);
+            }
+        }
+        
+        // Получаем комментарии
+        let comments = [];
+        try {
+            const { data: commentsData, error: commentsError } = await _supabase
+                .from('news_comments')
+                .select('*')
+                .eq('news_id', newsId)
+                .order('created_at', { ascending: true });
+            
+            if (!commentsError && commentsData) {
+                comments = commentsData;
+            }
+        } catch (commentsError) {
+            console.log('Ошибка загрузки комментариев:', commentsError);
+        }
+        
+        // Получаем информацию об авторах комментариев
+        const commentsWithAuthors = [];
+        for (const comment of comments) {
+            let commentAuthor = { username: 'Аноним' };
+            
+            if (comment.author_id) {
+                try {
+                    const { data: authorData } = await _supabase
+                        .from('profiles')
+                        .select('username, avatar_url')
+                        .eq('id', comment.author_id)
+                        .single();
+                    
+                    if (authorData) {
+                        commentAuthor = authorData;
+                    }
+                } catch (commentError) {
+                    console.log('Ошибка загрузки автора комментария:', commentError);
+                }
+            }
+            
+            commentsWithAuthors.push({
+                ...comment,
+                author: commentAuthor
+            });
+        }
+        
         // Форматируем дату
         const newsDate = new Date(news.created_at).toLocaleDateString('ru-RU', {
             day: 'numeric',
@@ -521,13 +808,14 @@ async function openNewsDetails(newsId) {
         if (news.image_urls && news.image_urls.length > 0) {
             imagesHTML = `
                 <div class="news-details-images">
-                    <h4><i class="fas fa-images"></i> Прикрепленные изображения (${news.image_urls.length})</h4>
+                    <h4><i class="fas fa-images"></i> Прикрепленные изображения</h4>
                     <div class="news-images-grid">
                         ${news.image_urls.map((url, index) => `
                             <div class="news-image-item">
-                                <img src="${url}" alt="Изображение новости ${index + 1}" 
-                                     onclick="openImageModal('${url}')" 
-                                     title="Нажмите для увеличения">
+                                <img src="${url}" 
+                                     alt="Изображение новости ${index + 1}" 
+                                     onclick="openImageModal('${url}')"
+                                     onerror="this.onerror=null; this.src='https://via.placeholder.com/300x200/111111/FFD700?text=Изображение+не+загружено';">
                             </div>
                         `).join('')}
                     </div>
@@ -535,31 +823,14 @@ async function openNewsDetails(newsId) {
             `;
         }
         
-        // Получаем комментарии
-        let comments = [];
-        try {
-            const { data: commentsData, error: commentsError } = await _supabase
-                .from('news_comments')
-                .select('*')
-                .eq('news_id', newsId)
-                .order('created_at', { ascending: true });
-            
-            if (!commentsError && commentsData) {
-                comments = commentsData;
-                newsComments[newsId] = comments;
-            }
-        } catch (commentsError) {
-            console.log('Ошибка загрузки комментариев:', commentsError);
-        }
-        
         // Генерируем HTML для комментариев
         let commentsHTML = '';
-        if (comments && comments.length > 0) {
+        if (commentsWithAuthors && commentsWithAuthors.length > 0) {
             commentsHTML = `
                 <div class="news-comments-section">
-                    <h4><i class="fas fa-comments"></i> Комментарии (${comments.length})</h4>
+                    <h4><i class="fas fa-comments"></i> Комментарии (${commentsWithAuthors.length})</h4>
                     <div class="comments-list">
-                        ${comments.map(comment => {
+                        ${commentsWithAuthors.map(comment => {
                             const commentDate = new Date(comment.created_at).toLocaleDateString('ru-RU', {
                                 day: 'numeric',
                                 month: 'short',
@@ -574,7 +845,7 @@ async function openNewsDetails(newsId) {
                                     <div class="comment-header">
                                         <div class="comment-author">
                                             <i class="fas fa-user"></i>
-                                            <span>Пользователь</span>
+                                            <span>${escapeHtml(comment.author?.username || 'Аноним')}</span>
                                         </div>
                                         <div class="comment-date">${commentDate}</div>
                                     </div>
@@ -605,10 +876,10 @@ async function openNewsDetails(newsId) {
         const newsDetailsDate = document.getElementById('newsDetailsDate');
         const newsDetailsContent = document.getElementById('newsDetailsContent');
         
-        if (newsDetailsTitle) newsDetailsTitle.textContent = escapeHtml(news.title);
+        if (newsDetailsTitle) newsDetailsTitle.textContent = news.title;
         if (newsDetailsAuthor) {
             newsDetailsAuthor.innerHTML = `
-                <i class="fas fa-user"></i> Bobix Corporation
+                <i class="fas fa-user"></i> ${escapeHtml(author.username)}
             `;
         }
         if (newsDetailsDate) {
@@ -626,7 +897,7 @@ async function openNewsDetails(newsId) {
             `;
         }
         
-        // Показываем кнопку удаления для админов (только в management.html)
+        // Показываем кнопку удаления для админов
         const deleteBtnContainer = document.querySelector('.news-details-actions');
         if (deleteBtnContainer && (currentUserRole === 'admin' || currentUserRole === 'owner')) {
             deleteBtnContainer.style.display = 'block';
@@ -646,7 +917,7 @@ async function openNewsDetails(newsId) {
                 const commentFormHTML = `
                     <div class="add-comment-form">
                         <h5><i class="fas fa-comment-medical"></i> Добавить комментарий</h5>
-                        <form id="addCommentForm" onsubmit="event.preventDefault(); addComment(event);">
+                        <form id="addCommentForm" onsubmit="event.preventDefault(); if (typeof addComment === 'function') addComment(event);">
                             <textarea 
                                 id="commentContent" 
                                 placeholder="Напишите ваш комментарий..." 
@@ -684,18 +955,6 @@ async function openNewsDetails(newsId) {
         console.error('Ошибка загрузки деталей новости:', error);
         showNotification('Ошибка загрузки новости. Попробуйте еще раз.', 'error');
     }
-}
-
-/**
- * Экранирование HTML для безопасности
- * @param {string} text - Текст для экранирования
- * @returns {string} - Экранированный текст
- */
-function escapeHtml(text) {
-    if (typeof text !== 'string') return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }
 
 /**
