@@ -8,91 +8,135 @@
 const SUPABASE_URL = "https://tstyjtgcisdelkkltyjo.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdHlqdGdjaXNkZWxra2x0eWpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMzgwOTIsImV4cCI6MjA4NTgxNDA5Mn0.0LXZMPUx__gP9Vnk1D5vV8RfScO2YPKP43HojV_I76s";
 
-// ИСПРАВЛЕННЫЙ ПУТЬ К STORAGE BUCKET - Теперь точно соответствует вашему bucket
+// Конфигурация Storage
 const STORAGE_BUCKET = "news-images";
 
-// Создание клиента Supabase с обработкой ошибок
+// Глобальные переменные для отслеживания состояния
 let _supabase;
+let _supabaseInitialized = false;
 
-try {
-    // Проверяем, доступен ли объект supabase
-    if (typeof supabase !== 'undefined') {
+/**
+ * Инициализирует клиент Supabase с обработкой ошибок
+ */
+function initializeSupabaseClient() {
+    try {
+        // Проверяем, доступен ли объект supabase
+        if (typeof supabase === 'undefined') {
+            console.error('Supabase библиотека не загружена');
+            createFallbackClient();
+            return false;
+        }
+        
+        // Создаем клиент с расширенными настройками
         _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
             auth: {
                 persistSession: true,
                 autoRefreshToken: true,
-                detectSessionInUrl: true
+                detectSessionInUrl: true,
+                storage: window.localStorage,
+                storageKey: 'sb-tstyjtgcisdelkkltyjo-auth-token'
             },
-            // ДОБАВЛЯЕМ: Глобальные настройки для Storage
             global: {
-                headers: {
-                    'Authorization': `Bearer ${SUPABASE_KEY}`,
-                    'apikey': SUPABASE_KEY
-                }
+                headers: { 'x-application-name': 'bobix-corporation' }
             }
         });
-        console.log('Supabase клиент успешно инициализирован');
         
-        // ДОБАВЛЯЕМ: Проверка доступности Storage
-        if (_supabase.storage) {
-            console.log('Supabase Storage доступен');
-        } else {
-            console.warn('Supabase Storage недоступен');
-        }
-    } else {
-        console.error('Supabase библиотека не загружена');
-        // Создаем заглушку для отладки
-        _supabase = {
-            auth: {
-                getUser: () => ({ data: { user: null }, error: 'Supabase не загружен' }),
-                signUp: () => ({ error: 'Supabase не загружен' }),
-                signInWithPassword: () => ({ error: 'Supabase не загружен' }),
-                signOut: () => ({ error: 'Supabase не загружен' })
-            },
-            from: () => ({
-                select: () => ({
-                    eq: () => ({
-                        single: () => ({ data: null, error: 'Supabase не загружен' })
-                    })
-                })
-            }),
-            storage: {
-                from: () => ({
-                    upload: () => ({ error: 'Supabase не загружен' }),
-                    getPublicUrl: () => ({ publicURL: '' })
-                })
-            }
-        };
+        // Тестируем подключение
+        testSupabaseConnection();
+        _supabaseInitialized = true;
+        console.log('Supabase клиент успешно инициализирован');
+        return true;
+        
+    } catch (error) {
+        console.error('Критическая ошибка при инициализации Supabase:', error);
+        createFallbackClient();
+        return false;
     }
-} catch (error) {
-    console.error('Ошибка при инициализации Supabase:', error);
-    // Создаем заглушку для предотвращения ошибок выполнения
+}
+
+/**
+ * Тестирует подключение к Supabase
+ */
+async function testSupabaseConnection() {
+    try {
+        const { data, error } = await _supabase.auth.getSession();
+        if (error) {
+            console.warn('Предупреждение при проверке сессии:', error.message);
+        } else {
+            console.log('Подключение к Supabase успешно установлено');
+        }
+    } catch (testError) {
+        console.warn('Тест подключения завершился с предупреждением:', testError.message);
+    }
+}
+
+/**
+ * Создает заглушку клиента для отладки
+ */
+function createFallbackClient() {
+    console.warn('Создание заглушки Supabase клиента');
     _supabase = {
         auth: {
-            getUser: () => ({ data: { user: null }, error: error.message }),
-            signUp: () => ({ error: error.message }),
-            signInWithPassword: () => ({ error: error.message }),
-            signOut: () => ({ error: error.message })
+            getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+            getUser: () => Promise.resolve({ data: { user: null }, error: 'Supabase не загружен' }),
+            signUp: () => Promise.resolve({ data: null, error: 'Supabase не загружен' }),
+            signInWithPassword: () => Promise.resolve({ data: null, error: 'Supabase не загружен' }),
+            signOut: () => Promise.resolve({ error: 'Supabase не загружен' })
         },
-        from: () => ({
-            select: () => ({
-                eq: () => ({
-                    single: () => ({ data: null, error: error.message })
-                })
+        from: (table) => ({
+            select: (columns = '*') => ({
+                eq: (column, value) => ({
+                    single: () => Promise.resolve({ data: null, error: `Таблица ${table} недоступна` }),
+                    maybeSingle: () => Promise.resolve({ data: null, error: `Таблица ${table} недоступна` }),
+                    limit: (count) => Promise.resolve({ data: [], error: `Таблица ${table} недоступна` }),
+                    order: (column, options) => Promise.resolve({ data: [], error: `Таблица ${table} недоступна` })
+                }),
+                neq: (column, value) => ({
+                    order: (column, options) => Promise.resolve({ data: [], error: `Таблица ${table} недоступна` })
+                }),
+                in: (column, values) => ({
+                    order: (column, options) => Promise.resolve({ data: [], error: `Таблица ${table} недоступна` })
+                }),
+                gte: (column, value) => ({
+                    single: () => Promise.resolve({ data: null, error: `Таблица ${table} недоступна` })
+                }),
+                limit: (count) => Promise.resolve({ data: [], error: `Таблица ${table} недоступна` }),
+                order: (column, options) => Promise.resolve({ data: [], error: `Таблица ${table} недоступна` }),
+                maybeSingle: () => Promise.resolve({ data: null, error: `Таблица ${table} недоступна` })
+            }),
+            insert: (data) => Promise.resolve({ data: null, error: `Таблица ${table} недоступна` }),
+            update: (data) => ({
+                eq: (column, value) => Promise.resolve({ data: null, error: `Таблица ${table} недоступна` })
+            }),
+            delete: () => ({
+                eq: (column, value) => Promise.resolve({ data: null, error: `Таблица ${table} недоступна` }),
+                neq: (column, value) => Promise.resolve({ data: null, error: `Таблица ${table} недоступна` })
             })
         }),
         storage: {
-            from: () => ({
-                upload: () => ({ error: error.message }),
-                getPublicUrl: () => ({ publicURL: '' })
+            from: (bucket) => ({
+                upload: (path, file) => Promise.resolve({ data: null, error: `Bucket ${bucket} недоступен` }),
+                getPublicUrl: (path) => ({ data: { publicUrl: '' } })
             })
         }
     };
 }
 
+// Инициализируем клиент при загрузке скрипта
+initializeSupabaseClient();
+
 // Экспортируем клиент для использования в других файлах
-// (в браузере он будет доступен глобально)
 if (typeof window !== 'undefined') {
     window._supabase = _supabase;
     window.STORAGE_BUCKET = STORAGE_BUCKET;
+    window._supabaseInitialized = _supabaseInitialized;
+    
+    // Добавляем глобальную функцию для проверки состояния
+    window.checkSupabaseStatus = function() {
+        return {
+            initialized: _supabaseInitialized,
+            url: SUPABASE_URL,
+            bucket: STORAGE_BUCKET
+        };
+    };
 }
