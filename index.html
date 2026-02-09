@@ -315,5 +315,126 @@ function showNotification(message, type = 'info') {
         // Остальной код для главной страницы...
     });
 </script>
+    <!-- Добавляем в конец тега script -->
+<script>
+    // ДОБАВЛЯЕМ: Проверка доступности Storage при загрузке
+    document.addEventListener('DOMContentLoaded', function() {
+        // Проверяем Storage через 2 секунды после загрузки
+        setTimeout(function() {
+            if (typeof checkStorageAvailability === 'function') {
+                checkStorageAvailability().then(isAvailable => {
+                    if (!isAvailable) {
+                        console.warn('Supabase Storage недоступен. Изображения могут не загружаться.');
+                    }
+                });
+            }
+        }, 2000);
+        
+        // Инициализация кнопок входа
+        const loginBtn = document.getElementById('loginBtn');
+        const mainLoginBtn = document.getElementById('mainLoginBtn');
+        const closeModal = document.querySelector('.close-modal');
+        const modal = document.getElementById('authModal');
+        
+        if (loginBtn) loginBtn.addEventListener('click', openAuthModal);
+        if (mainLoginBtn) mainLoginBtn.addEventListener('click', openAuthModal);
+        if (closeModal) closeModal.addEventListener('click', closeAuthModal);
+        
+        window.addEventListener('click', function(event) {
+            if (event.target === modal) {
+                closeAuthModal();
+            }
+        });
+        
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && modal.style.display === 'flex') {
+                closeAuthModal();
+            }
+        });
+        
+        // Проверка сессии
+        async function checkCurrentSession() {
+            try {
+                const { data: { user } } = await _supabase.auth.getUser();
+                if (user) {
+                    if (loginBtn) loginBtn.style.display = 'none';
+                    if (mainLoginBtn) {
+                        mainLoginBtn.innerHTML = '<i class="fas fa-tachometer-alt"></i> ПЕРЕЙТИ В ПАНЕЛЬ УПРАВЛЕНИЯ';
+                        mainLoginBtn.onclick = () => window.location.href = 'management.html';
+                    }
+                }
+            } catch (error) {
+                console.error('Ошибка при проверке сессии:', error);
+            }
+        }
+        
+        checkCurrentSession();
+        
+        // Инициализация модуля новостей
+        if (typeof initializeNewsModule === 'function') {
+            initializeNewsModule();
+        }
+    });
+</script><!-- Добавляем в конец тега script -->
+<script>
+    // ДОБАВЛЯЕМ: Проверка доступности Storage при загрузке
+    document.addEventListener('DOMContentLoaded', function() {
+        // Проверяем Storage через 2 секунды после загрузки
+        setTimeout(function() {
+            if (typeof checkStorageAvailability === 'function') {
+                checkStorageAvailability().then(isAvailable => {
+                    if (!isAvailable) {
+                        console.warn('Supabase Storage недоступен. Изображения могут не загружаться.');
+                    }
+                });
+            }
+        }, 2000);
+        
+        // Инициализация кнопок входа
+        const loginBtn = document.getElementById('loginBtn');
+        const mainLoginBtn = document.getElementById('mainLoginBtn');
+        const closeModal = document.querySelector('.close-modal');
+        const modal = document.getElementById('authModal');
+        
+        if (loginBtn) loginBtn.addEventListener('click', openAuthModal);
+        if (mainLoginBtn) mainLoginBtn.addEventListener('click', openAuthModal);
+        if (closeModal) closeModal.addEventListener('click', closeAuthModal);
+        
+        window.addEventListener('click', function(event) {
+            if (event.target === modal) {
+                closeAuthModal();
+            }
+        });
+        
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && modal.style.display === 'flex') {
+                closeAuthModal();
+            }
+        });
+        
+        // Проверка сессии
+        async function checkCurrentSession() {
+            try {
+                const { data: { user } } = await _supabase.auth.getUser();
+                if (user) {
+                    if (loginBtn) loginBtn.style.display = 'none';
+                    if (mainLoginBtn) {
+                        mainLoginBtn.innerHTML = '<i class="fas fa-tachometer-alt"></i> ПЕРЕЙТИ В ПАНЕЛЬ УПРАВЛЕНИЯ';
+                        mainLoginBtn.onclick = () => window.location.href = 'management.html';
+                    }
+                }
+            } catch (error) {
+                console.error('Ошибка при проверке сессии:', error);
+            }
+        }
+        
+        checkCurrentSession();
+        
+        // Инициализация модуля новостей
+        if (typeof initializeNewsModule === 'function') {
+            initializeNewsModule();
+        }
+    });
+</script>
 </body>
 </html>
