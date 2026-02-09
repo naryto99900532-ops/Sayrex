@@ -1924,3 +1924,84 @@ textarea:invalid + .validation-message {
     visibility: visible;
     opacity: 1;
 }
+/* Стили для перетаскивания игроков в топе */
+.player-management-card.dragging {
+    opacity: 0.5;
+    border: 2px dashed var(--accent) !important;
+    transform: rotate(3deg);
+    box-shadow: 0 10px 30px rgba(255, 215, 0, 0.3);
+    z-index: 1000;
+}
+
+.player-management-card.drag-over {
+    border-top: 3px solid var(--accent) !important;
+    position: relative;
+}
+
+.player-management-card.drag-over::before {
+    content: '';
+    position: absolute;
+    top: -5px;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--accent);
+    border-radius: 3px;
+}
+
+.player-management-card.draggable {
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.player-move-buttons {
+    display: flex;
+    gap: 5px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.move-btn {
+    padding: 6px 12px;
+    background: rgba(255, 215, 0, 0.1);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    color: var(--accent);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+}
+
+.move-btn:hover {
+    background: rgba(255, 215, 0, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 3px 10px rgba(255, 215, 0, 0.2);
+}
+
+.move-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.move-btn i {
+    font-size: 0.9rem;
+}
+
+/* Мини-превью для изображений новостей */
+.mini-preview {
+    transition: transform 0.3s;
+}
+
+.mini-preview:hover {
+    transform: scale(1.2);
+}
+
+.news-images-preview {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
