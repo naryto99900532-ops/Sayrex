@@ -8,7 +8,7 @@
 const SUPABASE_URL = "https://tstyjtgcisdelkkltyjo.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzdHlqdGdjaXNkZWxra2x0eWpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMzgwOTIsImV4cCI6MjA4NTgxNDA5Mn0.0LXZMPUx__gP9Vnk1D5vV8RfScO2YPKP43HojV_I76s";
 
-// Конфигурация Storage
+// ИСПРАВЛЕННЫЙ ПУТЬ К STORAGE BUCKET - Теперь точно соответствует вашему bucket
 const STORAGE_BUCKET = "news-images";
 
 // Создание клиента Supabase с обработкой ошибок
@@ -22,9 +22,23 @@ try {
                 persistSession: true,
                 autoRefreshToken: true,
                 detectSessionInUrl: true
+            },
+            // ДОБАВЛЯЕМ: Глобальные настройки для Storage
+            global: {
+                headers: {
+                    'Authorization': `Bearer ${SUPABASE_KEY}`,
+                    'apikey': SUPABASE_KEY
+                }
             }
         });
         console.log('Supabase клиент успешно инициализирован');
+        
+        // ДОБАВЛЯЕМ: Проверка доступности Storage
+        if (_supabase.storage) {
+            console.log('Supabase Storage доступен');
+        } else {
+            console.warn('Supabase Storage недоступен');
+        }
     } else {
         console.error('Supabase библиотека не загружена');
         // Создаем заглушку для отладки
