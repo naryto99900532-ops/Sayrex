@@ -850,7 +850,7 @@ async function handleAddPlayer(e) {
 }
 
 /**
- * Открытие модального окна редактирования игрока (старая версия)
+ * Открытие модального окна редактирования игрока
  * @param {string} playerId - ID игрока
  */
 async function openEditPlayerModal(playerId) {
@@ -859,18 +859,91 @@ async function openEditPlayerModal(playerId) {
         const player = playersData.find(p => p.id === playerId);
         
         if (!player) {
-            showNotification('Игрок не найден', 'error');
-            return;
+            // Пробуем найти в данных с полной информацией
+            if (typeof playersWithFullData !== 'undefined' && playersWithFullData.length > 0) {
+                const playerWithFullData = playersWithFullData.find(p => p.id === playerId);
+                if (playerWithFullData) {
+                    player = playerWithFullData;
+                }
+            }
+            
+            if (!player) {
+                showNotification('Игрок не найден', 'error');
+                return;
+            }
         }
         
-        // Заполняем форму данными игрока
-        document.getElementById('editPlayerId').value = player.id;
-        document.getElementById('editPlayerName').value = player.nickname || '';
-        document.getElementById('editPlayerScore').value = player.score || 0;
-        document.getElementById('editPlayerDescription').value = player.description || '';
+        // Создаем улучшенное модальное окно с полными данными
+        const modalHTML = `
+            <div class="modal" id="enhancedEditPlayerModal" style="display: flex;">
+                <div class="modal-content">
+                    <span class="close-modal" onclick="closeEnhancedEditPlayerModal()">&times;</span>
+                    <h2><i class="fas fa-edit"></i> Редактирование игрока</h2>
+                    <form id="enhancedEditPlayerForm">
+                        <input type="hidden" id="enhancedEditPlayerId" value="${player.id}">
+                        
+                        <div class="form-group">
+                            <label for="enhancedEditPlayerName"><i class="fas fa-user-secret"></i> Псевдоним</label>
+                            <input type="text" id="enhancedEditPlayerName" class="edit-input" 
+                                   value="${escapeHtml(player.nickname || '')}" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="enhancedEditPlayerRoblox"><i class="fas fa-gamepad"></i> Roblox никнейм</label>
+                            <input type="text" id="enhancedEditPlayerRoblox" class="edit-input" 
+                                   value="${escapeHtml(player.roblox_username || '')}" 
+                                   placeholder="Введите Roblox никнейм">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="enhancedEditPlayerDiscord"><i class="fab fa-discord"></i> Discord</label>
+                            <input type="text" id="enhancedEditPlayerDiscord" class="edit-input" 
+                                   value="${escapeHtml(player.discord || '')}" 
+                                   placeholder="Введите Discord (username#0000)">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="enhancedEditPlayerScore"><i class="fas fa-star"></i> Счет</label>
+                            <input type="number" id="enhancedEditPlayerScore" class="edit-input" 
+                                   value="${player.score || 0}" min="0" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="enhancedEditPlayerDescription"><i class="fas fa-file-alt"></i> Описание</label>
+                            <textarea id="enhancedEditPlayerDescription" class="edit-input" 
+                                      placeholder="Введите описание игрока" rows="4">${escapeHtml(player.description || '')}</textarea>
+                        </div>
+                        
+                        <div class="admin-controls">
+                            <button type="submit" class="admin-btn primary">
+                                <i class="fas fa-save"></i> Сохранить изменения
+                            </button>
+                            <button type="button" class="admin-btn danger" onclick="enhancedDeletePlayer('${player.id}')">
+                                <i class="fas fa-trash-alt"></i> Удалить игрока
+                            </button>
+                            <button type="button" class="admin-btn" onclick="closeEnhancedEditPlayerModal()">
+                                <i class="fas fa-times"></i> Отмена
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `;
         
-        // Показываем модальное окно
-        document.getElementById('editPlayerModal').style.display = 'flex';
+        // Удаляем предыдущее модальное окно если оно есть
+        const existingModal = document.getElementById('enhancedEditPlayerModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+        
+        // Добавляем новое модальное окно
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        
+        // Назначаем обработчик формы
+        document.getElementById('enhancedEditPlayerForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            handleEnhancedPlayerUpdate(player.id);
+        });
         
     } catch (error) {
         console.error('Ошибка открытия формы редактирования:', error);
@@ -879,10 +952,116 @@ async function openEditPlayerModal(playerId) {
 }
 
 /**
- * Закрытие модального окна редактирования
+ * Обработка обновления данных игрока с полными данными
+ * @param {string} playerId - ID игрока
  */
-function closeEditModal() {
-    document.getElementById('editPlayerModal').style.display = 'none';
+async function handleEnhancedPlayerUpdate(playerId) {
+    const playerName = document.getElementById('enhancedEditPlayerName').value.trim();
+    const playerRoblox = document.getElementById('enhancedEditPlayerRoblox').value.trim();
+    const playerDiscord = document.getElementById('enhancedEditPlayerDiscord').value.trim();
+    const playerScore = parseInt(document.getElementById('enhancedEditPlayerScore').value);
+    const playerDescription = document.getElementById('enhancedEditPlayerDescription').value.trim();
+    
+    // Валидация
+    if (!playerName) {
+        showNotification('Введите псевдоним игрока', 'error');
+        return;
+    }
+    
+    if (isNaN(playerScore) || playerScore < 0) {
+        showNotification('Введите корректный счет', 'error');
+        return;
+    }
+    
+    try {
+        // Обновляем данные игрока в базе данных
+        const { error } = await _supabase
+            .from('players')
+            .update({
+                nickname: playerName,
+                roblox_username: playerRoblox,
+                discord: playerDiscord,
+                score: playerScore,
+                description: playerDescription,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', playerId);
+        
+        if (error) {
+            throw error;
+        }
+        
+        // Показываем успешное сообщение
+        showNotification('Данные игрока обновлены!', 'success');
+        
+        // Закрываем модальное окно
+        closeEnhancedEditPlayerModal();
+        
+        // Обновляем все списки игроков
+        await loadPlayers(); // Обновляем основной список
+        await loadTopPlayers(); // Обновляем топ
+        
+        // Если есть функция обновления с полными данными, вызываем ее
+        if (typeof loadPlayersWithFullData === 'function') {
+            await loadPlayersWithFullData();
+        }
+        
+        // Обновляем отображение в реальном времени
+        updatePlayersRender();
+        
+    } catch (error) {
+        console.error('Ошибка обновления игрока:', error);
+        showNotification(`Ошибка обновления игрока: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Закрытие улучшенного модального окна редактирования
+ */
+function closeEnhancedEditPlayerModal() {
+    const modal = document.getElementById('enhancedEditPlayerModal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+/**
+ * Удаление игрока (улучшенная версия)
+ * @param {string} playerId - ID игрока
+ */
+async function enhancedDeletePlayer(playerId) {
+    if (!confirm('Вы уверены, что хотите удалить этого игрока? Это действие нельзя отменить.')) {
+        return;
+    }
+    
+    try {
+        const { error } = await _supabase
+            .from('players')
+            .delete()
+            .eq('id', playerId);
+        
+        if (error) {
+            throw error;
+        }
+        
+        showNotification('Игрок удален!', 'success');
+        
+        closeEnhancedEditPlayerModal();
+        
+        // Обновляем все списки
+        await loadPlayers();
+        await loadTopPlayers();
+        
+        if (typeof loadPlayersWithFullData === 'function') {
+            await loadPlayersWithFullData();
+        }
+        
+        updatePlayersRender();
+        
+    } catch (error) {
+        console.error('Ошибка удаления игрока:', error);
+        showNotification(`Ошибка удаления игрока: ${error.message}`, 'error');
+    }
 }
 
 /**
