@@ -503,26 +503,45 @@ function renderPlayersList(players) {
     players.forEach((player, index) => {
         const isAdmin = currentUserRole === 'admin' || currentUserRole === 'owner';
         const editButton = isAdmin ? `
-            <button class="admin-btn" onclick="openEnhancedEditPlayerModal('${player.id}')">
+            <button class="admin-btn" onclick="openEditPlayerModal('${player.id}')" style="margin-top: 10px;">
                 <i class="fas fa-edit"></i> Редактировать
             </button>
         ` : '';
         
         html += `
-            <div class="player-management-card" data-player-id="${player.id}">
+            <div class="player-management-card player-card-with-details">
                 <div class="player-rank">#${index + 1}</div>
                 <div class="player-info">
-                    <div class="player-avatar">
+                    <div class="player-avatar" onclick="openPlayerDetails('${player.id}')" style="cursor: pointer;">
                         <i class="fas fa-user"></i>
                     </div>
                     <div>
-                        <h3 class="player-name">${escapeHtml(player.nickname || 'Без имени')}</h3>
+                        <h3 class="player-name" style="cursor: pointer;" onclick="openPlayerDetails('${player.id}')">
+                            ${escapeHtml(player.nickname || 'Без имени')}
+                        </h3>
                         <p>Счет: <strong>${player.score || 0}</strong></p>
                     </div>
                 </div>
                 <div class="player-description">
                     ${escapeHtml(player.description || 'Описание отсутствует')}
                 </div>
+                
+                <!-- Дополнительные детали при наведении -->
+                <div class="player-details-hover">
+                    <div class="detail-row">
+                        <span class="detail-label">Roblox:</span>
+                        <span class="detail-value roblox">${escapeHtml(player.roblox_username || 'Не указан')}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Discord:</span>
+                        <span class="detail-value discord">${escapeHtml(player.discord || 'Не указан')}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Добавлен:</span>
+                        <span class="detail-value">${new Date(player.created_at).toLocaleDateString('ru-RU')}</span>
+                    </div>
+                </div>
+                
                 ${editButton}
             </div>
         `;
@@ -1550,4 +1569,39 @@ async function loadAdminPanelData() {
 // Функция загрузки данных для панели владельца
 async function loadOwnerPanelData() {
     await loadAdministrators();
+}
+// Экспортируем функции для использования в HTML
+if (typeof window !== 'undefined') {
+    window.loadPlayers = loadPlayers;
+    window.loadTopPlayers = loadTopPlayers;
+    window.loadAllUsers = loadAllUsers;
+    
+    // Старая функция (оставляем для совместимости)
+    window.openEditPlayerModal = openEditPlayerModal;
+    
+    // Новая улучшенная функция
+    window.openEditPlayerModal = openEditPlayerModal; // Она уже перезаписана выше
+    
+    // Функции для нового модального окна
+    window.closeEnhancedEditPlayerModal = closeEnhancedEditPlayerModal;
+    window.enhancedDeletePlayer = enhancedDeletePlayer;
+    
+    window.closeEditModal = closeEditModal;
+    window.openRoleModal = openRoleModal;
+    window.closeRoleModal = closeRoleModal;
+    window.refreshPlayersData = refreshPlayersData;
+    window.exportPlayersData = exportPlayersData;
+    window.clearAllPlayers = clearAllPlayers;
+    window.showAuditLog = showAuditLog;
+    window.clearAddForm = clearAddForm;
+    window.logout = logout;
+    
+    // Новые функции для экспорта
+    window.updatePlayersRender = updatePlayersRender;
+    window.updatePlayerStats = updatePlayerStats;
+    
+    // Функция для тестирования (если есть)
+    if (typeof handleEnhancedPlayerUpdate !== 'undefined') {
+        window.handleEnhancedPlayerUpdate = handleEnhancedPlayerUpdate;
+    }
 }
