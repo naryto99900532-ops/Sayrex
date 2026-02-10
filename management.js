@@ -503,45 +503,28 @@ function renderPlayersList(players) {
     players.forEach((player, index) => {
         const isAdmin = currentUserRole === 'admin' || currentUserRole === 'owner';
         const editButton = isAdmin ? `
-            <button class="admin-btn" onclick="openEditPlayerModal('${player.id}')" style="margin-top: 10px;">
+            <button class="admin-btn" onclick="openEditPlayerModal('${player.id}')">
                 <i class="fas fa-edit"></i> Редактировать
             </button>
         ` : '';
         
         html += `
-            <div class="player-management-card player-card-with-details">
+            <div class="player-management-card">
                 <div class="player-rank">#${index + 1}</div>
                 <div class="player-info">
-                    <div class="player-avatar" onclick="openPlayerDetails('${player.id}')" style="cursor: pointer;">
+                    <div class="player-avatar">
                         <i class="fas fa-user"></i>
                     </div>
                     <div>
-                        <h3 class="player-name" style="cursor: pointer;" onclick="openPlayerDetails('${player.id}')">
-                            ${escapeHtml(player.nickname || 'Без имени')}
-                        </h3>
+                        <h3 class="player-name">${escapeHtml(player.nickname || 'Без имени')}</h3>
                         <p>Счет: <strong>${player.score || 0}</strong></p>
+                        ${player.roblox_username ? `<p>Roblox: <strong>${escapeHtml(player.roblox_username)}</strong></p>` : ''}
+                        ${player.discord ? `<p>Discord: <strong>${escapeHtml(player.discord)}</strong></p>` : ''}
                     </div>
                 </div>
                 <div class="player-description">
                     ${escapeHtml(player.description || 'Описание отсутствует')}
                 </div>
-                
-                <!-- Дополнительные детали при наведении -->
-                <div class="player-details-hover">
-                    <div class="detail-row">
-                        <span class="detail-label">Roblox:</span>
-                        <span class="detail-value roblox">${escapeHtml(player.roblox_username || 'Не указан')}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Discord:</span>
-                        <span class="detail-value discord">${escapeHtml(player.discord || 'Не указан')}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Добавлен:</span>
-                        <span class="detail-value">${new Date(player.created_at).toLocaleDateString('ru-RU')}</span>
-                    </div>
-                </div>
-                
                 ${editButton}
             </div>
         `;
@@ -549,7 +532,6 @@ function renderPlayersList(players) {
     
     playersList.innerHTML = html;
 }
-
 /**
  * Загрузка топа игроков
  */
@@ -1023,7 +1005,7 @@ async function enhancedDeletePlayer(playerId) {
 }
 
 /**
- * Обработка обновления данных игрока (старая версия)
+ * Обработка обновления данных игрока
  * @param {Event} e - Событие отправки формы
  */
 async function handleUpdatePlayer(e) {
@@ -1031,6 +1013,8 @@ async function handleUpdatePlayer(e) {
     
     const playerId = document.getElementById('editPlayerId').value;
     const playerName = document.getElementById('editPlayerName').value.trim();
+    const playerRoblox = document.getElementById('editPlayerRoblox')?.value.trim() || '';
+    const playerDiscord = document.getElementById('editPlayerDiscord')?.value.trim() || '';
     const playerScore = parseInt(document.getElementById('editPlayerScore').value);
     const playerDescription = document.getElementById('editPlayerDescription').value.trim();
     
@@ -1047,14 +1031,25 @@ async function handleUpdatePlayer(e) {
     
     try {
         // Обновляем данные игрока
+        const updateData = {
+            nickname: playerName,
+            score: playerScore,
+            description: playerDescription,
+            updated_at: new Date().toISOString()
+        };
+        
+        // Добавляем Roblox и Discord если поля существуют
+        if (playerRoblox !== undefined) {
+            updateData.roblox_username = playerRoblox;
+        }
+        
+        if (playerDiscord !== undefined) {
+            updateData.discord = playerDiscord;
+        }
+        
         const { error } = await _supabase
             .from('players')
-            .update({
-                nickname: playerName,
-                score: playerScore,
-                description: playerDescription,
-                updated_at: new Date().toISOString()
-            })
+            .update(updateData)
             .eq('id', playerId);
         
         if (error) {
