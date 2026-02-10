@@ -1064,12 +1064,12 @@ async function handleUpdatePlayer(e) {
         
         // Валидация
         if (!playerName) {
-            showNotification('Введите имя игрока', 'error');
+            alert('Введите имя игрока');
             return;
         }
         
         if (isNaN(playerScore) || playerScore < 0) {
-            showNotification('Введите корректный счет', 'error');
+            alert('Введите корректный счет');
             return;
         }
         
@@ -1090,17 +1090,18 @@ async function handleUpdatePlayer(e) {
             .from('players')
             .update(updateData)
             .eq('id', playerId)
-            .select(); // Добавляем select чтобы получить обновленные данные
+            .select();
         
         if (error) {
             console.error('Ошибка Supabase:', error);
-            throw error;
+            alert('Ошибка сохранения: ' + error.message);
+            return;
         }
         
         console.log('Данные успешно обновлены:', data);
         
-        // Показываем успешное сообщение
-        showNotification('Данные игрока обновлены!', 'success');
+        // Используем alert вместо showNotification чтобы избежать рекурсии
+        alert('✅ Данные игрока обновлены!');
         
         // Закрываем модальное окно
         closeEditModal();
@@ -1108,17 +1109,11 @@ async function handleUpdatePlayer(e) {
         // Обновляем список игроков
         await loadPlayers();
         
-        // Обновляем отображение если есть такая функция
-        if (typeof updatePlayersRender === 'function') {
-            updatePlayersRender();
-        }
-        
     } catch (error) {
         console.error('Ошибка обновления игрока:', error);
-        showNotification(`Ошибка обновления игрока: ${error.message}`, 'error');
+        alert('❌ Ошибка обновления игрока: ' + error.message);
     }
 }
-
 /**
  * Обработка удаления игрока
  */
@@ -1475,14 +1470,63 @@ async function logout() {
         showNotification('Ошибка при выходе из системы', 'error');
     }
 }
+/**
+ * Простая функция для уведомлений (без рекурсии)
+ * @param {string} message - Текст сообщения
+ * @param {string} type - Тип сообщения (success, error, info)
+ */
+function simpleNotification(message, type = 'info') {
+    // Создаем элемент уведомления
+    const notification = document.createElement('div');
+    notification.className = 'simple-notification';
+    notification.innerHTML = `
+        <div class="notification-content">
+            <span>${escapeHtml(message)}</span>
+            <button onclick="this.parentElement.parentElement.remove()">&times;</button>
+        </div>
+    `;
+    
+    // Стили
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: ${type === 'success' ? '#2ecc71' : type === 'error' ? '#e74c3c' : '#3498db'};
+        color: white;
+        padding: 15px 20px;
+        border-radius: 8px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        z-index: 10000;
+        min-width: 300px;
+        max-width: 500px;
+        animation: slideIn 0.3s ease;
+    `;
+    
+    // Добавляем в DOM
+    document.body.appendChild(notification);
+    
+    // Удаляем через 5 секунд
+    setTimeout(() => {
+        if (notification.parentElement) {
+            notification.remove();
+        }
+    }, 5000);
+}
 
+/**
+ * Простая функция alert с иконками
+ */
+function showAlert(message, type = 'info') {
+    const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+    alert(`${icon} ${message}`);
+}
 // Экспортируем функции для использования в HTML
 if (typeof window !== 'undefined') {
     window.loadPlayers = loadPlayers;
     window.loadTopPlayers = loadTopPlayers;
     window.loadAllUsers = loadAllUsers;
     window.openEditPlayerModal = openEditPlayerModal;
-    window.closeEditModal = closeEditModal;
+    window.closeEditModal = closeEditModal; // <-- ОБЯЗАТЕЛЬНО!
     window.openRoleModal = openRoleModal;
     window.closeRoleModal = closeRoleModal;
     window.refreshPlayersData = refreshPlayersData;
@@ -1491,12 +1535,14 @@ if (typeof window !== 'undefined') {
     window.showAuditLog = showAuditLog;
     window.clearAddForm = clearAddForm;
     window.logout = logout;
+    window.simpleNotification = simpleNotification;
+    window.showAlert = showAlert;
     
-    // Новые функции для экспорта
-    window.updatePlayersRender = updatePlayersRender;
-    window.updatePlayerStats = updatePlayerStats;
+    // Отладочные функции
+    window.testPageFunctionality = testPageFunctionality;
+    window.checkPlayersTableStructure = checkPlayersTableStructure;
+    window.debugEditForm = debugEditForm;
 }
-
 // Обновляем функцию обновления UI по ролям
 function updateUIByRole() {
     const adminElements = document.querySelectorAll('.admin-only');
@@ -1541,7 +1587,22 @@ async function loadSectionData(sectionId) {
             break;
     }
 }
-
+/**
+ * Закрытие модального окна редактирования
+ */
+function closeEditModal() {
+    console.log('Закрытие модального окна редактирования');
+    const modal = document.getElementById('editPlayerModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Также сбрасываем форму
+    const form = document.getElementById('editPlayerForm');
+    if (form) {
+        form.reset();
+    }
+}
 // Функция загрузки данных для админ панели
 async function loadAdminPanelData() {
     await loadPlayers();
