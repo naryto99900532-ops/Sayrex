@@ -878,91 +878,30 @@ async function openEditPlayerModal(playerId) {
         const player = playersData.find(p => p.id === playerId);
         
         if (!player) {
-            // Пробуем найти в данных с полной информацией
-            if (typeof playersWithFullData !== 'undefined' && playersWithFullData.length > 0) {
-                const playerWithFullData = playersWithFullData.find(p => p.id === playerId);
-                if (playerWithFullData) {
-                    player = playerWithFullData;
-                }
-            }
-            
-            if (!player) {
-                showNotification('Игрок не найден', 'error');
-                return;
-            }
+            showNotification('Игрок не найден', 'error');
+            return;
         }
         
-        // Создаем улучшенное модальное окно с полными данными
-        const modalHTML = `
-            <div class="modal" id="enhancedEditPlayerModal" style="display: flex;">
-                <div class="modal-content">
-                    <span class="close-modal" onclick="closeEnhancedEditPlayerModal()">&times;</span>
-                    <h2><i class="fas fa-edit"></i> Редактирование игрока</h2>
-                    <form id="enhancedEditPlayerForm">
-                        <input type="hidden" id="enhancedEditPlayerId" value="${player.id}">
-                        
-                        <div class="form-group">
-                            <label for="enhancedEditPlayerName"><i class="fas fa-user-secret"></i> Псевдоним</label>
-                            <input type="text" id="enhancedEditPlayerName" class="edit-input" 
-                                   value="${escapeHtml(player.nickname || '')}" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="enhancedEditPlayerRoblox"><i class="fas fa-gamepad"></i> Roblox никнейм</label>
-                            <input type="text" id="enhancedEditPlayerRoblox" class="edit-input" 
-                                   value="${escapeHtml(player.roblox_username || '')}" 
-                                   placeholder="Введите Roblox никнейм">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="enhancedEditPlayerDiscord"><i class="fab fa-discord"></i> Discord</label>
-                            <input type="text" id="enhancedEditPlayerDiscord" class="edit-input" 
-                                   value="${escapeHtml(player.discord || '')}" 
-                                   placeholder="Введите Discord (username#0000)">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="enhancedEditPlayerScore"><i class="fas fa-star"></i> Счет</label>
-                            <input type="number" id="enhancedEditPlayerScore" class="edit-input" 
-                                   value="${player.score || 0}" min="0" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="enhancedEditPlayerDescription"><i class="fas fa-file-alt"></i> Описание</label>
-                            <textarea id="enhancedEditPlayerDescription" class="edit-input" 
-                                      placeholder="Введите описание игрока" rows="4">${escapeHtml(player.description || '')}</textarea>
-                        </div>
-                        
-                        <div class="admin-controls">
-                            <button type="submit" class="admin-btn primary">
-                                <i class="fas fa-save"></i> Сохранить изменения
-                            </button>
-                            <button type="button" class="admin-btn danger" onclick="enhancedDeletePlayer('${player.id}')">
-                                <i class="fas fa-trash-alt"></i> Удалить игрока
-                            </button>
-                            <button type="button" class="admin-btn" onclick="closeEnhancedEditPlayerModal()">
-                                <i class="fas fa-times"></i> Отмена
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        `;
+        // Заполняем форму данными игрока
+        document.getElementById('editPlayerId').value = player.id;
+        document.getElementById('editPlayerName').value = player.nickname || '';
+        document.getElementById('editPlayerScore').value = player.score || 0;
+        document.getElementById('editPlayerDescription').value = player.description || '';
         
-        // Удаляем предыдущее модальное окно если оно есть
-        const existingModal = document.getElementById('enhancedEditPlayerModal');
-        if (existingModal) {
-            existingModal.remove();
+        // Добавляем поля для Roblox и Discord если они существуют в форме
+        const editPlayerRoblox = document.getElementById('editPlayerRoblox');
+        const editPlayerDiscord = document.getElementById('editPlayerDiscord');
+        
+        if (editPlayerRoblox) {
+            editPlayerRoblox.value = player.roblox_username || '';
         }
         
-        // Добавляем новое модальное окно
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        if (editPlayerDiscord) {
+            editPlayerDiscord.value = player.discord || '';
+        }
         
-        // Назначаем обработчик формы
-        document.getElementById('enhancedEditPlayerForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            handleEnhancedPlayerUpdate(player.id);
-        });
+        // Показываем модальное окно
+        document.getElementById('editPlayerModal').style.display = 'flex';
         
     } catch (error) {
         console.error('Ошибка открытия формы редактирования:', error);
