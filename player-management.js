@@ -522,17 +522,6 @@ function escapeHtml(text) {
 }
 
 /**
- * Показать уведомление
- */
-function showNotification(message, type = 'info') {
-    if (typeof window.showNotification === 'function') {
-        window.showNotification(message, type);
-    } else {
-        alert(message);
-    }
-}
-
-/**
  * Экспорт функций для глобального использования
  */
 if (typeof window !== 'undefined') {
