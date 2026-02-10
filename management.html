@@ -330,34 +330,53 @@
         </main>
     </div>
 
-    <!-- Модальное окно для редактирования игрока -->
-    <div id="editPlayerModal" class="modal">
-        <div class="modal-content">
-            <span class="close-modal" onclick="closeEditModal()">&times;</span>
-            <h2>Редактирование игрока</h2>
-            <form id="editPlayerForm">
-                <input type="hidden" id="editPlayerId">
-                <div class="form-group">
-                    <input type="text" id="editPlayerName" class="edit-input" placeholder="Имя игрока" required>
-                </div>
-                <div class="form-group">
-                    <input type="number" id="editPlayerScore" class="edit-input" placeholder="Счет" required>
-                </div>
-                <div class="form-group">
-                    <textarea id="editPlayerDescription" class="edit-input" placeholder="Описание" rows="4" required></textarea>
-                </div>
-                <div class="admin-controls">
-                    <button type="submit" class="admin-btn primary">
-                        <i class="fas fa-save"></i> Сохранить изменения
-                    </button>
-                    <button type="button" class="admin-btn danger" id="deletePlayerBtn">
-                        <i class="fas fa-trash-alt"></i> Удалить игрока
-                    </button>
-                </div>
-            </form>
-        </div>
+  <!-- Модальное окно для редактирования игрока -->
+<div id="editPlayerModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal" onclick="closeEditModal()">&times;</span>
+        <h2><i class="fas fa-edit"></i> Редактирование игрока</h2>
+        <form id="editPlayerForm">
+            <input type="hidden" id="editPlayerId">
+            
+            <div class="form-group">
+                <label for="editPlayerName"><i class="fas fa-user-secret"></i> Псевдоним</label>
+                <input type="text" id="editPlayerName" class="edit-input" placeholder="Имя игрока" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="editPlayerRoblox"><i class="fas fa-gamepad"></i> Roblox никнейм</label>
+                <input type="text" id="editPlayerRoblox" class="edit-input" placeholder="Roblox никнейм">
+            </div>
+            
+            <div class="form-group">
+                <label for="editPlayerDiscord"><i class="fab fa-discord"></i> Discord</label>
+                <input type="text" id="editPlayerDiscord" class="edit-input" placeholder="Discord (username#0000)">
+            </div>
+            
+            <div class="form-group">
+                <label for="editPlayerScore"><i class="fas fa-star"></i> Счет</label>
+                <input type="number" id="editPlayerScore" class="edit-input" placeholder="Счет" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="editPlayerDescription"><i class="fas fa-file-alt"></i> Описание</label>
+                <textarea id="editPlayerDescription" class="edit-input" placeholder="Описание" rows="4" required></textarea>
+            </div>
+            
+            <div class="admin-controls">
+                <button type="submit" class="admin-btn primary">
+                    <i class="fas fa-save"></i> Сохранить изменения
+                </button>
+                <button type="button" class="admin-btn danger" id="deletePlayerBtn">
+                    <i class="fas fa-trash-alt"></i> Удалить игрока
+                </button>
+                <button type="button" class="admin-btn" onclick="closeEditModal()">
+                    <i class="fas fa-times"></i> Отмена
+                </button>
+            </div>
+        </form>
     </div>
-
+</div>
     <!-- Модальное окно для управления ролями -->
     <div id="roleModal" class="modal">
         <div class="modal-content">
