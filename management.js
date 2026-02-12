@@ -637,10 +637,19 @@ function renderTopPlayers(players) {
     
     players.forEach((player, index) => {
         const medal = index < 3 ? ['🥇', '🥈', '🥉'][index] : '🏅';
+        const isAdmin = currentUserRole === 'admin' || currentUserRole === 'owner';
         
         html += `
-            <div class="player-management-card" data-player-id="${player.id}">
-                <div class="player-rank">${medal} ТОП ${index + 1}</div>
+            <div class="player-management-card" 
+                 data-player-id="${player.id}" 
+                 data-player-index="${index}"
+                 data-player-score="${player.score || 0}">
+                
+                <div class="player-rank">
+                    ${medal} ТОП ${index + 1}
+                    ${isAdmin ? '<span class="drag-hint" title="Перетащите для изменения порядка"><i class="fas fa-arrows-alt"></i></span>' : ''}
+                </div>
+                
                 <div class="player-info">
                     <div class="player-avatar" style="background: linear-gradient(45deg, ${getRankColor(index)}, #ffd700);">
                         <i class="fas fa-crown"></i>
@@ -650,13 +659,41 @@ function renderTopPlayers(players) {
                         <p class="player-title">Рейтинг: <strong>${player.score || 0}</strong> очков</p>
                     </div>
                 </div>
+                
                 <div class="player-description">
                     ${escapeHtml(player.description || 'Описание отсутствует')}
                 </div>
+                
+                <div class="player-details-mini">
+                    ${player.roblox_username ? `
+                        <span class="mini-detail">
+                            <i class="fas fa-gamepad"></i> ${escapeHtml(player.roblox_username)}
+                        </span>
+                    ` : ''}
+                    ${player.discord ? `
+                        <span class="mini-detail">
+                            <i class="fab fa-discord"></i> ${escapeHtml(player.discord)}
+                        </span>
+                    ` : ''}
+                </div>
+                
                 <div class="threshold-badges">
                     <div class="threshold-badge">Позиция: ${index + 1}</div>
                     <div class="threshold-badge">Счет: ${player.score || 0}</div>
                 </div>
+                
+                ${isAdmin ? `
+                    <div class="player-move-buttons">
+                        <button class="move-btn" onclick="movePlayerInTop('${player.id}', 'up', ${index})" 
+                                ${index === 0 ? 'disabled' : ''} title="Переместить вверх">
+                            <i class="fas fa-arrow-up"></i> Вверх
+                        </button>
+                        <button class="move-btn" onclick="movePlayerInTop('${player.id}', 'down', ${index})" 
+                                ${index === players.length - 1 ? 'disabled' : ''} title="Переместить вниз">
+                            <i class="fas fa-arrow-down"></i> Вниз
+                        </button>
+                    </div>
+                ` : ''}
             </div>
         `;
     });
@@ -667,9 +704,277 @@ function renderTopPlayers(players) {
     const topAdminControls = document.getElementById('topAdminControls');
     if (topAdminControls && (currentUserRole === 'admin' || currentUserRole === 'owner')) {
         topAdminControls.style.display = 'block';
+        
+        // ✅ ДОБАВЛЯЕМ: инструкцию по перетаскиванию
+        const instruction = document.createElement('div');
+        instruction.className = 'control-instruction';
+        instruction.innerHTML = `
+            <i class="fas fa-info-circle"></i> 
+            Совет: вы можете перетаскивать карточки мышкой, чтобы изменить порядок
+        `;
+        topAdminControls.appendChild(instruction);
     }
 }
-
+/**
+ * Перемещение игрока в топе (кнопками вверх/вниз)
+ * @param {string} playerId - ID игрока
+ * @param {string} direction - Направление ('up' или 'down')
+ * @param {number} currentIndex - Текущая позиция
+ */
+async function movePlayerInTop(playerId, direction, currentIndex) {
+    console.log(`🔼 Перемещение игрока ${playerId} ${direction} (позиция ${currentIndex})`);
+    
+    try {
+        // Получаем всех игроков в топе
+        const { data: players, error } = await _supabase
+            .from('players')
+            .select('id, score, nickname')
+            .order('score', { ascending: false })
+            .limit(50);
+        
+        if (error) throw error;
+        
+        // Находим индексы
+        const currentPlayerIndex = players.findIndex(p => p.id === playerId);
+        if (currentPlayerIndex === -1) return;
+        
+        let swapIndex;
+        if (direction === 'up' && currentPlayerIndex > 0) {
+            swapIndex = currentPlayerIndex - 1;
+        } else if (direction === 'down' && currentPlayerIndex < players.length - 1) {
+            swapIndex = currentPlayerIndex + 1;
+        } else {
+            showNotification('Нельзя переместить дальше', 'warning');
+            return;
+        }
+        
+        // Меняем счета местами
+        const currentScore = players[currentPlayerIndex].score;
+        const swapScore = players[swapIndex].score;
+        
+        // Обновляем в базе
+        await _supabase
+            .from('players')
+            .update({ 
+                score: swapScore, 
+                updated_at: new Date().toISOString() 
+            })
+            .eq('id', playerId);
+        
+        await _supabase
+            .from('players')
+            .update({ 
+                score: currentScore, 
+                updated_at: new Date().toISOString() 
+            })
+            .eq('id', players[swapIndex].id);
+        
+        showNotification(`Игрок перемещен ${direction === 'up' ? 'вверх' : 'вниз'}!`, 'success');
+        
+        // Обновляем список
+        await loadTopPlayers();
+        
+    } catch (error) {
+        console.error('Ошибка перемещения игрока:', error);
+        showNotification('Ошибка перемещения игрока', 'error');
+    }
+}
+/**
+ * Настройка drag & drop для топа игроков (УЛУЧШЕННАЯ)
+ */
+function setupDragAndDrop() {
+    const topPlayersList = document.getElementById('topPlayersList');
+    if (!topPlayersList) return;
+    
+    let draggedItem = null;
+    let draggedIndex = null;
+    
+    // Удаляем старые обработчики
+    const oldElement = topPlayersList.cloneNode(false);
+    topPlayersList.parentNode.replaceChild(oldElement, topPlayersList);
+    
+    // Назначаем новые обработчики
+    oldElement.addEventListener('dragstart', function(e) {
+        const card = e.target.closest('.player-management-card');
+        if (!card) return;
+        
+        draggedItem = card;
+        draggedIndex = parseInt(card.dataset.playerIndex || '0');
+        
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', card.dataset.playerId);
+        
+        // Визуальная обратная связь
+        card.classList.add('dragging');
+        
+        console.log('🎯 Начало перетаскивания, позиция:', draggedIndex);
+    });
+    
+    oldElement.addEventListener('dragend', function(e) {
+        const cards = oldElement.querySelectorAll('.player-management-card');
+        cards.forEach(card => {
+            card.classList.remove('dragging', 'drag-over');
+        });
+        
+        if (draggedItem) {
+            draggedItem = null;
+            draggedIndex = null;
+        }
+    });
+    
+    oldElement.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        
+        const card = e.target.closest('.player-management-card');
+        if (!card || card === draggedItem) return;
+        
+        // Убираем старые маркеры
+        oldElement.querySelectorAll('.player-management-card').forEach(c => {
+            c.classList.remove('drag-over');
+        });
+        
+        // Добавляем маркер в зависимости от позиции мыши
+        const rect = card.getBoundingClientRect();
+        const mouseY = e.clientY;
+        const threshold = rect.top + rect.height / 2;
+        
+        if (mouseY < threshold) {
+            card.classList.add('drag-over', 'drag-over-top');
+        } else {
+            card.classList.add('drag-over', 'drag-over-bottom');
+        }
+    });
+    
+    oldElement.addEventListener('drop', async function(e) {
+        e.preventDefault();
+        
+        if (!draggedItem) return;
+        
+        const targetCard = e.target.closest('.player-management-card');
+        if (!targetCard || targetCard === draggedItem) return;
+        
+        const parent = targetCard.parentNode;
+        const items = Array.from(parent.children);
+        const draggedIndex = items.indexOf(draggedItem);
+        const targetIndex = items.indexOf(targetCard);
+        
+        if (draggedIndex < targetIndex) {
+            parent.insertBefore(draggedItem, targetCard.nextSibling);
+        } else {
+            parent.insertBefore(draggedItem, targetCard);
+        }
+        
+        // Убираем визуальные эффекты
+        draggedItem.classList.remove('dragging');
+        items.forEach(card => card.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom'));
+        
+        // Обновляем ранги и сохраняем в БД
+        await updateTopOrder();
+        
+        draggedItem = null;
+    });
+    
+    // Добавляем атрибуты draggable для карточек
+    const enableDragging = function() {
+        const cards = oldElement.querySelectorAll('.player-management-card');
+        cards.forEach(card => {
+            if (currentUserRole === 'admin' || currentUserRole === 'owner') {
+                card.setAttribute('draggable', 'true');
+            } else {
+                card.setAttribute('draggable', 'false');
+            }
+        });
+    };
+    
+    // Включаем перетаскивание при загрузке
+    enableDragging();
+    
+    // Переключаем при изменении режима
+    window.enableDragMode = function() {
+        const cards = oldElement.querySelectorAll('.player-management-card');
+        const isDraggable = cards[0]?.getAttribute('draggable') === 'true';
+        
+        cards.forEach(card => {
+            if (currentUserRole === 'admin' || currentUserRole === 'owner') {
+                card.setAttribute('draggable', !isDraggable);
+                card.style.cursor = !isDraggable ? 'grab' : 'default';
+                
+                // Показываем/скрываем подсказки
+                const hint = card.querySelector('.drag-hint');
+                if (hint) {
+                    hint.style.opacity = !isDraggable ? '1' : '0.3';
+                }
+            }
+        });
+        
+        showNotification(
+            !isDraggable ? '🎮 Режим перетаскивания ВКЛЮЧЕН' : '📋 Режим перетаскивания ВЫКЛЮЧЕН',
+            !isDraggable ? 'success' : 'info'
+        );
+    };
+}
+/**
+ * Обновление порядка топа после перетаскивания
+ */
+async function updateTopOrder() {
+    try {
+        const playerCards = document.querySelectorAll('#topPlayersList .player-management-card');
+        const updates = [];
+        
+        console.log(`🔄 Обновление порядка, ${playerCards.length} игроков`);
+        
+        playerCards.forEach((card, index) => {
+            const playerId = card.getAttribute('data-player-id');
+            const newScore = 1000 - (index * 50); // Уменьшаем на 50 за каждую позицию
+            
+            // Обновляем отображение ранга
+            const rankElement = card.querySelector('.player-rank');
+            if (rankElement) {
+                const medal = index < 3 ? ['🥇', '🥈', '🥉'][index] : '🏅';
+                rankElement.innerHTML = `${medal} ТОП ${index + 1}`;
+                
+                // Добавляем подсказку для админов
+                if (currentUserRole === 'admin' || currentUserRole === 'owner') {
+                    rankElement.innerHTML += `<span class="drag-hint" title="Перетащите для изменения порядка"><i class="fas fa-arrows-alt"></i></span>`;
+                }
+            }
+            
+            // Обновляем data-атрибуты
+            card.dataset.playerIndex = index;
+            card.dataset.playerScore = newScore;
+            
+            // Обновляем счет в отображении
+            const scoreElement = card.querySelector('.player-title strong, .threshold-badge:last-child');
+            if (scoreElement) {
+                scoreElement.textContent = newScore;
+            }
+            
+            updates.push({
+                id: playerId,
+                score: newScore
+            });
+        });
+        
+        // Обновляем в базе данных
+        for (const update of updates) {
+            await _supabase
+                .from('players')
+                .update({ 
+                    score: update.score,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', update.id);
+        }
+        
+        console.log('✅ Порядок топа сохранен');
+        showNotification('Порядок топа сохранен!', 'success');
+        
+    } catch (error) {
+        console.error('❌ Ошибка обновления порядка топа:', error);
+        showNotification('Ошибка сохранения порядка топа', 'error');
+    }
+}
 /**
  * Получение цвета для ранга
  * @param {number} rank - Ранг игрока
