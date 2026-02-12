@@ -832,7 +832,78 @@ async function updateTopOrder() {
         showNotification('Ошибка сохранения порядка топа', 'error');
     }
 }
+/**
+ * ====================================================
+ * СИНХРОНИЗАЦИЯ ФУНКЦИЙ РЕДАКТИРОВАНИЯ
+ * ====================================================
+ */
 
+// ✅ ДОБАВЛЯЕМ В КОНЕЦ ФАЙЛА:
+
+/**
+ * Открытие деталей игрока (УЛУЧШЕННАЯ ВЕРСИЯ)
+ * @param {string} playerId - ID игрока
+ */
+function openPlayerDetails(playerId) {
+    console.log('📋 Открытие деталей игрока:', playerId);
+    
+    // Ищем игрока в данных
+    const player = playersData.find(p => p.id === playerId);
+    if (!player) {
+        showNotification('Игрок не найден', 'error');
+        return;
+    }
+    
+    // ✅ ДОБАВЛЯЕМ Discord и Roblox в детали
+    const detailsHTML = `
+        <div class="player-details-item">
+            <label><i class="fas fa-user-secret"></i> Псевдоним</label>
+            <div class="value">${escapeHtml(player.nickname || 'Не указан')}</div>
+        </div>
+        <div class="player-details-item">
+            <label><i class="fas fa-gamepad"></i> Roblox никнейм</label>
+            <div class="value roblox">${escapeHtml(player.roblox_username || 'Не указан')}</div>
+        </div>
+        <div class="player-details-item">
+            <label><i class="fab fa-discord"></i> Discord</label>
+            <div class="value discord">${escapeHtml(player.discord || 'Не указан')}</div>
+            ${player.discord ? '' : '<small style="color:#ff4444;">Не указан</small>'}
+        </div>
+        <div class="player-details-item">
+            <label><i class="fas fa-star"></i> Счет</label>
+            <div class="value">${player.score || 0}</div>
+        </div>
+        ${player.description ? `
+        <div class="player-details-item">
+            <label><i class="fas fa-file-alt"></i> Описание</label>
+            <div class="value">${escapeHtml(player.description)}</div>
+        </div>
+        ` : ''}
+        <div class="player-details-item">
+            <label><i class="fas fa-calendar"></i> Добавлен</label>
+            <div class="value">${new Date(player.created_at).toLocaleDateString('ru-RU')}</div>
+        </div>
+        <div class="player-details-item">
+            <label><i class="fas fa-clock"></i> Обновлен</label>
+            <div class="value">${new Date(player.updated_at || player.created_at).toLocaleDateString('ru-RU')}</div>
+        </div>
+        <div class="admin-controls" style="margin-top:20px;">
+            <button class="admin-btn primary" onclick="openEditPlayerModal('${player.id}')">
+                <i class="fas fa-edit"></i> Редактировать
+            </button>
+        </div>
+    `;
+    
+    const contentElement = document.getElementById('playerDetailsContent');
+    if (contentElement) {
+        contentElement.innerHTML = detailsHTML;
+    }
+    
+    const modal = document.getElementById('playerDetailsModal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
 /**
  * Сохранение порядка топа
  */
