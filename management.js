@@ -891,38 +891,114 @@ async function handleAddPlayer(e) {
  * @param {string} playerId - ID игрока
  */
 async function openEditPlayerModal(playerId) {
+    console.log('🔧 ОТКРЫТИЕ РЕДАКТИРОВАНИЯ ИГРОКА:', playerId);
+    
     try {
-        console.log('Открываем редактирование игрока:', playerId);
+        // ✅ ЗАГРУЖАЕМ СВЕЖИЕ ДАННЫЕ ИЗ БАЗЫ (а не из кэша)
+        showNotification('Загрузка данных игрока...', 'info');
         
-        // Находим игрока в данных
-        const player = playersData.find(p => p.id === playerId);
+        const { data: player, error } = await _supabase
+            .from('players')
+            .select('*')
+            .eq('id', playerId)
+            .single();
+        
+        if (error) {
+            console.error('❌ Ошибка загрузки игрока:', error);
+            showNotification('Ошибка загрузки данных игрока', 'error');
+            return;
+        }
         
         if (!player) {
-            console.error('Игрок не найден в playersData:', playerId);
             showNotification('Игрок не найден', 'error');
             return;
         }
         
-        console.log('Найден игрок:', player);
+        console.log('✅ Данные игрока загружены:', player);
+        console.log('   Discord:', player.discord || '❌ НЕ УКАЗАН');
+        console.log('   Roblox:', player.roblox_username || '❌ НЕ УКАЗАН');
         
-        // Заполняем форму данными игрока
-        document.getElementById('editPlayerId').value = player.id;
-        document.getElementById('editPlayerName').value = player.nickname || '';
-        document.getElementById('editPlayerRoblox').value = player.roblox_username || '';
-        document.getElementById('editPlayerDiscord').value = player.discord || '';
-        document.getElementById('editPlayerScore').value = player.score || 0;
-        document.getElementById('editPlayerDescription').value = player.description || '';
+        // ✅ ЗАПОЛНЯЕМ ФОРМУ СО ВСЕМИ ПОЛЯМИ
+        const idField = document.getElementById('editPlayerId');
+        const nameField = document.getElementById('editPlayerName');
+        const robloxField = document.getElementById('editPlayerRoblox');
+        const discordField = document.getElementById('editPlayerDiscord');
+        const scoreField = document.getElementById('editPlayerScore');
+        const descField = document.getElementById('editPlayerDescription');
         
-        console.log('Форма заполнена');
-        console.log('Roblox:', player.roblox_username);
-        console.log('Discord:', player.discord);
+        if (idField) idField.value = player.id;
+        if (nameField) nameField.value = player.nickname || '';
+        if (robloxField) robloxField.value = player.roblox_username || '';
+        if (discordField) discordField.value = player.discord || '';
+        if (scoreField) scoreField.value = player.score || 0;
+        if (descField) descField.value = player.description || '';
         
-        // Показываем модальное окно
-        document.getElementById('editPlayerModal').style.display = 'flex';
+        // ✅ ДОБАВЛЯЕМ КНОПКУ ОБНОВЛЕНИЯ ДАННЫХ
+        addRefreshButtonToEditModal(playerId);
+        
+        // ✅ ПОКАЗЫВАЕМ МОДАЛЬНОЕ ОКНО
+        const modal = document.getElementById('editPlayerModal');
+        if (modal) {
+            modal.style.display = 'flex';
+            
+            // ✅ УБЕЖДАЕМСЯ, ЧТО ФОРМА ВИДИМА
+            const form = document.getElementById('editPlayerForm');
+            if (form) {
+                form.style.display = 'block';
+            }
+            
+            // ✅ ФОКУС НА ПЕРВОЕ ПОЛЕ
+            setTimeout(() => {
+                if (nameField) nameField.focus();
+            }, 200);
+        } else {
+            console.error('❌ Модальное окно editPlayerModal не найдено!');
+            showNotification('Ошибка: модальное окно не найдено', 'error');
+        }
         
     } catch (error) {
-        console.error('Ошибка открытия формы редактирования:', error);
-        showNotification('Ошибка загрузки данных игрока', 'error');
+        console.error('❌ Критическая ошибка при открытии редактирования:', error);
+        showNotification(`Ошибка: ${error.message}`, 'error');
+    }
+}
+/**
+ * ДОБАВЛЯЕТ кнопку обновления данных в форму редактирования
+ * @param {string} playerId - ID игрока
+ */
+function addRefreshButtonToEditModal(playerId) {
+    const form = document.getElementById('editPlayerForm');
+    if (!form) return;
+    
+    // Проверяем, есть ли уже такая кнопка
+    if (document.getElementById('refreshPlayerDataBtn')) {
+        return;
+    }
+    
+    // Создаем контейнер для кнопок если его нет
+    let controls = form.querySelector('.admin-controls');
+    if (!controls) {
+        controls = document.createElement('div');
+        controls.className = 'admin-controls';
+        form.appendChild(controls);
+    }
+    
+    // Добавляем кнопку обновления
+    const refreshBtn = document.createElement('button');
+    refreshBtn.id = 'refreshPlayerDataBtn';
+    refreshBtn.type = 'button';
+    refreshBtn.className = 'admin-btn';
+    refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Обновить данные';
+    refreshBtn.onclick = function(e) {
+        e.preventDefault();
+        openEditPlayerModal(playerId);
+    };
+    
+    // Вставляем перед последней кнопкой
+    const lastBtn = controls.lastElementChild;
+    if (lastBtn) {
+        controls.insertBefore(refreshBtn, lastBtn);
+    } else {
+        controls.appendChild(refreshBtn);
     }
 }
 /**
@@ -1044,48 +1120,65 @@ async function enhancedDeletePlayer(playerId) {
  */
 async function handleUpdatePlayer(e) {
     e.preventDefault();
-    console.log('Сохранение изменений игрока...');
+    console.log('💾 СОХРАНЕНИЕ ИЗМЕНЕНИЙ ИГРОКА...');
     
     try {
-        const playerId = document.getElementById('editPlayerId').value;
-        const playerName = document.getElementById('editPlayerName').value.trim();
-        const playerRoblox = document.getElementById('editPlayerRoblox').value.trim();
-        const playerDiscord = document.getElementById('editPlayerDiscord').value.trim();
-        const playerScore = parseInt(document.getElementById('editPlayerScore').value);
-        const playerDescription = document.getElementById('editPlayerDescription').value.trim();
+        // ✅ ПОЛУЧАЕМ ВСЕ ДАННЫЕ ИЗ ФОРМЫ
+        const playerId = document.getElementById('editPlayerId')?.value;
+        const playerName = document.getElementById('editPlayerName')?.value?.trim();
+        const playerRoblox = document.getElementById('editPlayerRoblox')?.value?.trim();
+        const playerDiscord = document.getElementById('editPlayerDiscord')?.value?.trim();
+        const playerScore = parseInt(document.getElementById('editPlayerScore')?.value);
+        const playerDescription = document.getElementById('editPlayerDescription')?.value?.trim();
         
-        console.log('Полученные данные:');
-        console.log('ID:', playerId);
-        console.log('Имя:', playerName);
-        console.log('Roblox:', playerRoblox);
-        console.log('Discord:', playerDiscord);
-        console.log('Счет:', playerScore);
-        console.log('Описание:', playerDescription);
+        // ✅ ВАЛИДАЦИЯ
+        if (!playerId) {
+            showNotification('Ошибка: ID игрока не найден', 'error');
+            return;
+        }
         
-        // Валидация
         if (!playerName) {
-            alert('Введите имя игрока');
+            showNotification('Введите псевдоним игрока', 'error');
             return;
         }
         
         if (isNaN(playerScore) || playerScore < 0) {
-            alert('Введите корректный счет');
+            showNotification('Введите корректный счет (положительное число)', 'error');
             return;
         }
         
-        // Подготовка данных для обновления
+        // ✅ ВАЛИДАЦИЯ DISCORD (если указан)
+        if (playerDiscord && !isValidDiscord(playerDiscord)) {
+            showNotification('Discord должен быть в формате username#0000', 'error');
+            return;
+        }
+        
+        console.log('📦 Данные для сохранения:');
+        console.log('   ID:', playerId);
+        console.log('   Имя:', playerName);
+        console.log('   Roblox:', playerRoblox || '(не указан)');
+        console.log('   Discord:', playerDiscord || '(не указан)');
+        console.log('   Счет:', playerScore);
+        console.log('   Описание:', playerDescription?.substring(0, 30) + '...');
+        
+        // ✅ ПОДГОТОВКА ДАННЫХ
         const updateData = {
             nickname: playerName,
             roblox_username: playerRoblox || null,
             discord: playerDiscord || null,
             score: playerScore,
-            description: playerDescription,
+            description: playerDescription || '',
             updated_at: new Date().toISOString()
         };
         
-        console.log('Данные для обновления:', updateData);
+        // ✅ УДАЛЯЕМ UNDEFINED ПОЛЯ
+        Object.keys(updateData).forEach(key => {
+            if (updateData[key] === undefined) {
+                delete updateData[key];
+            }
+        });
         
-        // Обновляем данные игрока
+        // ✅ СОХРАНЯЕМ В БАЗУ
         const { data, error } = await _supabase
             .from('players')
             .update(updateData)
@@ -1093,26 +1186,47 @@ async function handleUpdatePlayer(e) {
             .select();
         
         if (error) {
-            console.error('Ошибка Supabase:', error);
-            alert('Ошибка сохранения: ' + error.message);
+            console.error('❌ Ошибка Supabase:', error);
+            showNotification(`Ошибка сохранения: ${error.message}`, 'error');
             return;
         }
         
-        console.log('Данные успешно обновлены:', data);
+        console.log('✅ Данные успешно обновлены:', data);
         
-        // Используем alert вместо showNotification чтобы избежать рекурсии
-        alert('✅ Данные игрока обновлены!');
+        // ✅ УСПЕХ!
+        showNotification('✅ Данные игрока обновлены!', 'success');
         
-        // Закрываем модальное окно
+        // ✅ ЗАКРЫВАЕМ МОДАЛЬНОЕ ОКНО
         closeEditModal();
         
-        // Обновляем список игроков
+        // ✅ ОБНОВЛЯЕМ ВСЕ СПИСКИ
         await loadPlayers();
+        await loadTopPlayers();
+        
+        // ✅ ОБНОВЛЯЕМ ПОЛНЫЕ ДАННЫЕ
+        if (typeof loadPlayersWithFullData === 'function') {
+            await loadPlayersWithFullData();
+        }
+        
+        if (typeof updatePlayersRender === 'function') {
+            updatePlayersRender();
+        }
         
     } catch (error) {
-        console.error('Ошибка обновления игрока:', error);
-        alert('❌ Ошибка обновления игрока: ' + error.message);
+        console.error('❌ Ошибка обновления игрока:', error);
+        showNotification(`❌ Ошибка: ${error.message}`, 'error');
     }
+}
+function isValidDiscord(discord) {
+    if (!discord) return true; // Пустое значение разрешено
+    
+    // Формат: username#0000
+    const discordRegex = /^[a-zA-Z0-9_.]{2,32}#[0-9]{4}$/;
+    
+    // Также разрешаем просто username (без тега)
+    const usernameRegex = /^[a-zA-Z0-9_.]{2,32}$/;
+    
+    return discordRegex.test(discord) || usernameRegex.test(discord);
 }
 /**
  * Обработка удаления игрока
